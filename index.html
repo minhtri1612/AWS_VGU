@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Cloud Storage Manager</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+                background-attachment: fixed;
+                min-height: 100vh;
+                padding: 20px;
+                color: #333;
+            }
+
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                background: rgba(255, 255, 255, 0.98);
+                border-radius: 24px;
+                box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+                overflow: hidden;
+                backdrop-filter: blur(20px);
+                animation: fadeIn 0.6s ease-out;
+            }
+
+            @keyframes fadeIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            .header {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                padding: 40px 30px;
+                text-align: center;
+                color: white;
+                position: relative;
+                overflow: hidden;
+            }
+
+            .header::before {
+                content: '';
+                position: absolute;
+                top: -50%;
+                left: -50%;
+                width: 200%;
+                height: 200%;
+                background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+                animation: rotate 20s linear infinite;
+            }
+
+            @keyframes rotate {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+
+            .header h1 {
+                font-size: 3rem;
+                font-weight: 700;
+                margin-bottom: 12px;
+                text-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+                position: relative;
+                z-index: 1;
+                letter-spacing: -1px;
+            }
+
+            .header p {
+                font-size: 1.2rem;
+                opacity: 0.95;
+                font-weight: 300;
+                position: relative;
+                z-index: 1;
+            }
+
+            .content {
+                padding: 50px;
+            }
+
+            .section {
+                margin-bottom: 35px;
+                background: white;
+                border-radius: 20px;
+                padding: 35px;
+                box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+                border: 1px solid rgba(0, 0, 0, 0.04);
+                transition: transform 0.3s ease, box-shadow 0.3s ease;
+            }
+
+            .section:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 12px 35px rgba(0, 0, 0, 0.12);
+            }
+
+            .section h3 {
+                color: #667eea;
+                font-size: 1.6rem;
+                margin-bottom: 25px;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .section h3::before {
+                content: '';
+                width: 5px;
+                height: 24px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                border-radius: 3px;
+            }
+
+            .upload-area {
+                border: 3px dashed #667eea;
+                border-radius: 16px;
+                padding: 40px;
+                text-align: center;
+                background: linear-gradient(135deg, rgba(102, 126, 234, 0.06) 0%, rgba(118, 75, 162, 0.06) 100%);
+                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                position: relative;
+                overflow: hidden;
+            }
+
+            .upload-area::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: -100%;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+                transition: left 0.5s;
+            }
+
+            .upload-area:hover {
+                border-color: #764ba2;
+                background: linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%);
+                transform: scale(1.01);
+            }
+
+            .upload-area:hover::before {
+                left: 100%;
+            }
+
+            input[type="file"] {
+                margin: 15px 0;
+                padding: 12px 16px;
+                border: 2px solid #e0e0e0;
+                border-radius: 12px;
+                background: white;
+                font-size: 15px;
+                transition: all 0.3s ease;
+                cursor: pointer;
+            }
+
+            input[type="file"]:hover {
+                border-color: #667eea;
+                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+            }
+
+            button {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: none;
+                padding: 14px 28px;
+                border-radius: 12px;
+                cursor: pointer;
+                font-size: 15px;
+                font-weight: 600;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+                position: relative;
+                overflow: hidden;
+            }
+
+            button::before {
+                content: '';
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                width: 0;
+                height: 0;
+                border-radius: 50%;
+                background: rgba(255, 255, 255, 0.3);
+                transform: translate(-50%, -50%);
+                transition: width 0.6s, height 0.6s;
+            }
+
+            button:hover::before {
+                width: 300px;
+                height: 300px;
+            }
+
+            button:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 10px 30px rgba(102, 126, 234, 0.5);
+            }
+
+            button:active {
+                transform: translateY(-1px);
+            }
+
+            button span {
+                position: relative;
+                z-index: 1;
+            }
+
+            #upload_button {
+                margin-left: 15px;
+                padding: 14px 35px;
+                font-size: 16px;
+            }
+
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                background: white;
+                border-radius: 16px;
+                overflow: hidden;
+                box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+            }
+
+            th {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 18px;
+                text-align: left;
+                font-weight: 700;
+                font-size: 14px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+
+            td {
+                padding: 18px;
+                border-bottom: 1px solid #f0f0f0;
+                vertical-align: middle;
+                font-size: 15px;
+            }
+
+            tr {
+                transition: background 0.2s ease;
+            }
+
+            tr:hover {
+                background: rgba(102, 126, 234, 0.06);
+            }
+
+            tr:last-child td {
+                border-bottom: none;
+            }
+
+            .filename {
+                font-weight: 600;
+                color: #333;
+            }
+
+            .action-buttons {
+                display: flex;
+                gap: 10px;
+            }
+
+            .download-btn {
+                background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+                box-shadow: 0 6px 20px rgba(17, 153, 142, 0.4);
+                padding: 10px 20px;
+                font-size: 13px;
+            }
+
+            .download-btn:hover {
+                box-shadow: 0 10px 30px rgba(17, 153, 142, 0.5);
+            }
+
+            .delete-btn {
+                background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+                box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+                padding: 10px 20px;
+                font-size: 13px;
+            }
+
+            .delete-btn:hover {
+                box-shadow: 0 10px 30px rgba(255, 107, 107, 0.5);
+            }
+
+            .preview-area {
+                text-align: center;
+                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+                border-radius: 16px;
+                padding: 30px;
+                min-height: 250px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border: 2px dashed #dee2e6;
+            }
+
+            #download_image {
+                max-width: 100%;
+                max-height: 450px;
+                border-radius: 16px;
+                box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
+                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+
+            #download_image:hover {
+                transform: scale(1.05);
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+            }
+
+            .empty-state {
+                color: #999;
+                font-style: italic;
+                text-align: center;
+                padding: 50px;
+                font-size: 16px;
+            }
+
+            @media (max-width: 768px) {
+                body {
+                    padding: 10px;
+                }
+
+                .container {
+                    margin: 0;
+                    border-radius: 20px;
+                }
+                
+                .content {
+                    padding: 25px;
+                }
+                
+                .section {
+                    padding: 25px;
+                }
+                
+                .header {
+                    padding: 30px 20px;
+                }
+
+                .header h1 {
+                    font-size: 2.2rem;
+                }
+
+                .header p {
+                    font-size: 1rem;
+                }
+                
+                .action-buttons {
+                    flex-direction: column;
+                    width: 100%;
+                }
+
+                .action-buttons button {
+                    width: 100%;
+                }
+                
+                table {
+                    font-size: 13px;
+                }
+                
+                th, td {
+                    padding: 12px 10px;
+                }
+
+                .upload-area {
+                    padding: 25px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>☁️ Cloud Storage Manager</h1>
+                <p>Upload, manage, and preview your files with ease</p>
+            </div>
+
+            <div class="content">
+                <div class="section">
+                    <h3>📤 Upload Image</h3>
+                    <div class="upload-area">
+                        <label for="file_input" style="font-size: 16px; font-weight: 600; color: #667eea; display: block; margin-bottom: 15px;">📎 Select file to upload</label>
+                        <input type="file" id="file_input">
+                        <button id="upload_button" onclick="uploadObject()"><span>🚀 Upload</span></button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>📁 Your Files</h3>
+                    <table id="objectsTable">
+                        <thead>
+                            <tr>
+                                <th>Filename</th>
+                                <th>Download</th>
+                                <th>Delete</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="section">
+                    <h3>🖼️ Preview</h3>
+                    <div class="preview-area">
+                        <img src="" id="download_image" alt="Preview will appear here" style="display: none;">
+                        <div id="preview-placeholder" style="color: #999; font-size: 16px; font-style: italic;">👆 Click "Download" on any file to preview it here</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // ================================================================
+            // CONFIGURATION: YOUR API GATEWAY URL
+            // ================================================================
+            const API_ENDPOINT = "https://gxvz49e1a5.execute-api.ap-southeast-2.amazonaws.com/dev";
+
+
+            // ================================================================
+            // 1. LIST OBJECTS (Method: GET)
+            // ================================================================
+            function fetchListOfObjects() {
+                console.log("Fetching list from:", API_ENDPOINT);
+                
+                fetch(API_ENDPOINT + "?format=json", {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then((response) => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error, status = ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then((text) => {
+                    console.log("List received:", text);
+                    renderListOfObjects(text);
+                })
+                .catch((error) => {
+                    console.error("Error fetching list:", error);
+                    alert("Failed to load list. Check console for details.");
+                });
+            }
+
+            // ================================================================
+            // 2. DOWNLOAD OBJECT (Method: PUT)
+            // Note: Your friend's logic used PUT for downloads, so we keep that.
+            // ================================================================
+            function fetchObject(key) {
+                console.log("Downloading:", key);
+                const body = { "key": key };
+
+                fetch(API_ENDPOINT, {
+                    method: 'PUT', 
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error("Download failed");
+                    return response.blob();
+                })
+                .then((myBlob) => {
+                    const objectURL = URL.createObjectURL(myBlob);
+                    const img_S3 = document.getElementById("download_image");
+                    const placeholder = document.getElementById("preview-placeholder");
+                    img_S3.src = objectURL;
+                    img_S3.style.display = "block";
+                    if (placeholder) placeholder.style.display = "none";
+                })
+                .catch(err => console.error(err));
+            }
+
+            // ================================================================
+            // 3. DELETE OBJECT (Method: DELETE)
+            // ================================================================
+            function deleteObject(key) {
+                if(!confirm("Are you sure you want to delete " + key + "?")) return;
+
+                console.log("Deleting:", key);
+                const body = { "key": key };
+
+                fetch(API_ENDPOINT, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(text => {
+                    console.log("Delete response:", text);
+                    if (text && text.trim().length > 0) {
+                        try {
+                            const data = JSON.parse(text);
+                            console.log("Parsed JSON:", data);
+                            if (data.error || data.errorType) {
+                                alert("Delete failed: " + (data.error || data.errorMessage || "Unknown error"));
+                                return;
+                            }
+                            // Success - show message if available
+                            if (data.message) {
+                                console.log("Delete success:", data.message);
+                            }
+                        } catch (e) {
+                            console.log("Response is not JSON, treating as text:", e);
+                        }
+                    }
+                    // Always refresh the list after delete (success or failure)
+                    setTimeout(() => {
+                        fetchListOfObjects();
+                    }, 500); // Small delay to ensure delete completes
+                })
+                .catch(error => {
+                    console.error("Error deleting object:", error);
+                    alert("Delete failed: " + error.message);
+                });
+            }
+
+            // ================================================================
+            // 4. UPLOAD OBJECT (Method: POST)
+            // ================================================================
+            function uploadObject() {
+                let file_input = document.getElementById("file_input");
+                if(file_input.files.length === 0) {
+                    alert("Please select a file first!");
+                    return;
+                }
+
+                let file = file_input.files[0];
+                let reader = new FileReader();
+
+                reader.onload = () => {
+                    const uint8Array = new Uint8Array(reader.result);
+                    
+                    // FIXED: Standard way to convert to Base64 in generic JS
+                    let binaryString = "";
+                    for (let i = 0; i < uint8Array.length; i++) {
+                        binaryString += String.fromCharCode(uint8Array[i]);
+                    }
+                    const base64String = btoa(binaryString);
+
+                    const body = {
+                        "content": base64String,
+                        "key": file.name
+                    };
+
+                    console.log("Uploading...", file.name);
+
+                    fetch(API_ENDPOINT, {
+                         method: 'POST',
+                         headers: {
+                            'Content-Type': 'application/json'
+                         },
+                         body: JSON.stringify(body)
+                    })
+                    .then((resp) => resp.text())
+                    .then(function(response) {
+                        console.info('Upload success:', response);
+                        alert("Upload Successful!");
+                        fetchListOfObjects(); // Refresh list
+                    })
+                    .catch(err => {
+                        console.error("Upload failed:", err);
+                        alert("Upload failed.");
+                    });
+                };
+                
+                reader.onerror = (e) => {
+                    console.log('File Read Error : ' + e.type);
+                };
+                reader.readAsArrayBuffer(file);  
+            }
+
+            // ================================================================
+            // HELPER: Render Table
+            // ================================================================
+            function renderListOfObjects(listOfObjects) {
+                let objectsTableBody = document.querySelector("#objectsTable tbody");
+                
+                // Clear existing rows
+                while (objectsTableBody.firstChild) {
+                    objectsTableBody.removeChild(objectsTableBody.lastChild);
+                }
+
+                if (!listOfObjects) {
+                    objectsTableBody.innerHTML = '<tr><td colspan="3" class="empty-state">📭 No files yet. Upload your first file above!</td></tr>';
+                    return;
+                }
+
+                let objectsArray;
+                try {
+                    objectsArray = JSON.parse(listOfObjects);
+                } catch (e) {
+                    console.error("Invalid JSON response from server:", listOfObjects);
+                    objectsTableBody.innerHTML = '<tr><td colspan="3" class="empty-state">⚠️ Error loading files. Please refresh.</td></tr>';
+                    return;
+                }
+
+                if (objectsArray.length === 0) {
+                    objectsTableBody.innerHTML = '<tr><td colspan="3" class="empty-state">📭 No files yet. Upload your first file above!</td></tr>';
+                    return;
+                }
+
+                for (let i = 0; i < objectsArray.length; i++) {
+                    let row = document.createElement("tr");
+                    
+                    // Filename Column
+                    let keyCell = document.createElement("td");
+                    keyCell.className = "filename";
+                    keyCell.textContent = objectsArray[i].key;
+                    row.appendChild(keyCell);
+
+                    // Download Column
+                    let downloadCell = document.createElement("td");
+                    let downloadButton = document.createElement("button");
+                    downloadButton.className = "download-btn";
+                    let downloadSpan = document.createElement("span");
+                    downloadSpan.textContent = "⬇️ Download";
+                    downloadButton.appendChild(downloadSpan);
+                    downloadButton.onclick = function() { fetchObject(objectsArray[i].key); };
+                    downloadCell.appendChild(downloadButton);
+                    row.appendChild(downloadCell);
+
+                    // Delete Column
+                    let deleteCell = document.createElement("td");
+                    let deleteButton = document.createElement("button");
+                    deleteButton.className = "delete-btn";
+                    let deleteSpan = document.createElement("span");
+                    deleteSpan.textContent = "🗑️ Delete";
+                    deleteButton.appendChild(deleteSpan);
+                    deleteButton.onclick = function() { deleteObject(objectsArray[i].key); };
+                    deleteCell.appendChild(deleteButton);
+                    row.appendChild(deleteCell);
+
+                    objectsTableBody.appendChild(row);
+                }
+            }
+
+            // Initial Load
+            fetchListOfObjects();
+
+        </script>
+    </body>
+</html>

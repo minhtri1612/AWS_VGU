@@ -1,0 +1,21 @@
+# ========================================
+# TERRAFORM VARIABLES
+# ========================================
+# 
+# Copy this file to terraform.tfvars and fill in your values
+# Only the db_password is required - everything else is automated!
+#
+# cp terraform.tfvars.example terraform.tfvars
+# nano terraform.tfvars  # or use your preferred editor
+#
+
+# REQUIRED: Database master password
+# Must contain at least 1 letter, 1 digit, and be at least 8 characters long
+# Allowed characters: a-z, A-Z, 0-9, +, _, ?, -, .
+db_password = "YourSecurePassword123"
+
+# Optional: Override defaults if needed
+# aws_region = "ap-southeast-2"
+# environment = "dev"
+# project_name = "minhtri-devops-cloud"
+
