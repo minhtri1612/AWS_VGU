@@ -33,6 +33,9 @@ public class LambdaEntryPoint implements
     private static final String GET_FUNC_NAME = System.getenv().getOrDefault("GET_FUNC_NAME", "LambdaGetObjects");
     private static final String UPLOAD_FUNC_NAME = System.getenv().getOrDefault("UPLOAD_FUNC_NAME", "LambdaUploadObjects");
     private static final String LIST_FUNC_NAME = System.getenv().getOrDefault("LIST_FUNC_NAME", "LambdaGetListOfObjects");
+    private static final String GET_RESIZED_FUNC_NAME = System.getenv().getOrDefault("GET_RESIZED_FUNC_NAME", "LambdaGetResizedImage");
+    private static final String GET_PHOTOS_DB_FUNC_NAME = System.getenv().getOrDefault("GET_PHOTOS_DB_FUNC_NAME", "LambdaGetPhotosDB");
+    private static final String ADD_PHOTO_DB_FUNC_NAME = System.getenv().getOrDefault("ADD_PHOTO_DB_FUNC_NAME", "LambdaAddPhotoDB");
 
     public LambdaEntryPoint() {
     }   
@@ -97,9 +100,19 @@ public class LambdaEntryPoint implements
         
         if (event.getQueryStringParameters() != null && event.getQueryStringParameters().containsKey("action")) {
             action = event.getQueryStringParameters().get("action");
-        } else if (event.getQueryStringParameters() != null && event.getQueryStringParameters().containsKey("format") && 
-                   event.getQueryStringParameters().get("format").equals("json")) {
-            action = "list"; // Handle ?format=json as list action
+        } else if (event.getQueryStringParameters() != null && event.getQueryStringParameters().containsKey("format")) {
+            String format = event.getQueryStringParameters().get("format");
+            if (format.equals("json")) {
+                action = "list"; // Handle ?format=json as list action
+            } else if (format.equals("resized")) {
+                action = "get_resized"; // Handle ?format=resized as get resized image action
+            } else if (format.equals("photos") || format.equals("db")) {
+                action = "get_photos_db"; // Handle ?format=photos or ?format=db as get photos from DB
+            }
+        } else if (event.getQueryStringParameters() != null && event.getQueryStringParameters().containsKey("resized")) {
+            action = "get_resized"; // Handle ?resized=true as get resized image action
+        } else if (event.getQueryStringParameters() != null && event.getQueryStringParameters().containsKey("photos")) {
+            action = "get_photos_db"; // Handle ?photos=true as get photos from DB
         } else {
             // Route based on HTTP method if no action query parameter
             switch (httpMethod.toUpperCase()) {
@@ -153,6 +166,12 @@ public class LambdaEntryPoint implements
             functionName = UPLOAD_FUNC_NAME;
         } else if (action.equalsIgnoreCase("list")) {
             functionName = LIST_FUNC_NAME;
+        } else if (action.equalsIgnoreCase("get_resized")) {
+            functionName = GET_RESIZED_FUNC_NAME;
+        } else if (action.equalsIgnoreCase("get_photos_db")) {
+            functionName = GET_PHOTOS_DB_FUNC_NAME;
+        } else if (action.equalsIgnoreCase("add_photo_db")) {
+            functionName = ADD_PHOTO_DB_FUNC_NAME;
         } else {
             functionName = GET_FUNC_NAME;
         }

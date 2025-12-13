@@ -66,7 +66,12 @@ resource "aws_iam_role_policy" "lambda_invoke_policy" {
           aws_lambda_function.get_objects.arn,
           aws_lambda_function.upload_objects.arn,
           aws_lambda_function.delete_objects.arn,
-          aws_lambda_function.get_list_of_objects.arn
+          aws_lambda_function.get_list_of_objects.arn,
+          aws_lambda_function.get_resized_image.arn,
+          aws_lambda_function.get_photos_db.arn,
+          aws_lambda_function.add_photo_db.arn,
+          aws_lambda_function.orchestrate_upload.arn,
+          aws_lambda_function.resize_wrapper.arn
         ]
       }
     ]

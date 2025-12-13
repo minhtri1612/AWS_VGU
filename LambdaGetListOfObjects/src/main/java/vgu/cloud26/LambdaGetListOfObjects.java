@@ -19,6 +19,7 @@ public class LambdaGetListOfObjects implements RequestHandler<APIGatewayProxyReq
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent request, Context context) {
+        // Note: OPTIONS preflight is handled by Function URL CORS configuration
         context.getLogger().log("Received request: " + request.getBody());
 
         String bucketName = System.getenv().getOrDefault("BUCKET_NAME", "minhtri-devops-cloud-getobjects");
@@ -50,11 +51,9 @@ public class LambdaGetListOfObjects implements RequestHandler<APIGatewayProxyReq
         response.setStatusCode(200);
         response.setBody(objArray.toString());
         
+        // Note: CORS headers are handled by Function URL configuration
         java.util.Map<String, String> headers = new java.util.HashMap<>();
         headers.put("Content-Type", "application/json");
-        headers.put("Access-Control-Allow-Origin", "*");
-        headers.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        headers.put("Access-Control-Allow-Headers", "Content-Type");
         response.setHeaders(headers);
         
         return response;

@@ -3,10 +3,18 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import org.json.JSONObject;
+import software.amazon.awssdk.awscore.exception.AwsServiceException;
+import software.amazon.awssdk.core.SdkBytes;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.lambda.LambdaClient;
+import software.amazon.awssdk.services.lambda.model.InvokeRequest;
+import software.amazon.awssdk.services.lambda.model.InvokeResponse;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
@@ -18,6 +26,13 @@ public class LambdaUploadObjects implements
             System.getenv().getOrDefault("BUCKET_NAME", "minhtri-devops-cloud-getobjects");
     private static final Region REGION =
             Region.of(System.getenv().getOrDefault("AWS_REGION", "ap-southeast-2"));
+    
+    // Lambda client to invoke LambdaAddPhotoDB
+    private static final LambdaClient lambdaClient = LambdaClient.builder()
+            .region(REGION)
+            .build();
+    
+    private static final String ADD_PHOTO_DB_FUNC_NAME = System.getenv().getOrDefault("ADD_PHOTO_DB_FUNC_NAME", "LambdaAddPhotoDB");
 
     @Override
     public APIGatewayProxyResponseEvent
@@ -91,7 +106,7 @@ public class LambdaUploadObjects implements
             s3Client.putObject(putObjectRequest, RequestBody.fromBytes(objBytes));
             
             context.getLogger().log("Upload to S3 completed successfully");
-
+            
             response.setStatusCode(200);
             response.setBody("Object uploaded successfully");
             response.withIsBase64Encoded(false);
@@ -117,6 +132,42 @@ public class LambdaUploadObjects implements
         }
 
         return response;
+    }
+    
+    // Helper method to call LambdaAddPhotoDB
+    private void callAddPhotoDB(String filename, String description, Context context) {
+        try {
+            // Create the payload for LambdaAddPhotoDB
+            JSONObject payload = new JSONObject();
+            payload.put("key", filename);
+            payload.put("description", description);
+            
+            // Wrap in APIGatewayProxyRequestEvent format (same as EntryPoint does)
+            JSONObject lambdaEvent = new JSONObject();
+            lambdaEvent.put("httpMethod", "POST");
+            lambdaEvent.put("body", payload.toString());
+            lambdaEvent.put("headers", new JSONObject());
+            lambdaEvent.put("queryStringParameters", new JSONObject());
+            
+            String eventJson = lambdaEvent.toString();
+            context.getLogger().log("Calling LambdaAddPhotoDB with payload: " + eventJson);
+            
+            InvokeRequest invokeRequest = InvokeRequest.builder()
+                    .functionName(ADD_PHOTO_DB_FUNC_NAME)
+                    .payload(SdkBytes.fromUtf8String(eventJson))
+                    .invocationType("RequestResponse")
+                    .build();
+            
+            InvokeResponse invokeResult = lambdaClient.invoke(invokeRequest);
+            ByteBuffer responsePayload = invokeResult.payload().asByteBuffer();
+            String responseString = StandardCharsets.UTF_8.decode(responsePayload).toString();
+            
+            context.getLogger().log("LambdaAddPhotoDB response: " + responseString);
+        } catch (Exception e) {
+            context.getLogger().log("Error calling LambdaAddPhotoDB: " + e.getMessage());
+            e.printStackTrace();
+            // Don't throw - just log the error so upload still succeeds
+        }
     }
 
 }

@@ -11,7 +11,12 @@ resource "aws_lambda_function" "upload_objects" {
 
   environment {
     variables = {
-      BUCKET_NAME = aws_s3_bucket.source_bucket.id
+      BUCKET_NAME         = aws_s3_bucket.source_bucket.id
+      ADD_PHOTO_DB_FUNC_NAME = aws_lambda_function.add_photo_db.function_name
     }
   }
+
+  depends_on = [
+    aws_lambda_function.add_photo_db
+  ]
 }

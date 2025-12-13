@@ -38,6 +38,7 @@ public class LambdaGetObject implements RequestHandler<APIGatewayProxyRequestEve
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent request, Context context) {
+        // Note: OPTIONS preflight is handled by Function URL CORS configuration
         String requestBody = request.getBody();
         
         context.getLogger().log("Raw request body: " + requestBody);
@@ -179,12 +180,9 @@ public class LambdaGetObject implements RequestHandler<APIGatewayProxyRequestEve
         response.setBody(body);
         response.withIsBase64Encoded(isBase64);
         
-        // Set headers with CORS support
+        // Note: CORS headers are handled by Function URL configuration
         java.util.Map<String, String> headers = new java.util.HashMap<>();
         headers.put("Content-Type", mimeType);
-        headers.put("Access-Control-Allow-Origin", "*");
-        headers.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        headers.put("Access-Control-Allow-Headers", "Content-Type, Authorization");
         response.setHeaders(headers);
         
         return response;
@@ -233,12 +231,9 @@ public class LambdaGetObject implements RequestHandler<APIGatewayProxyRequestEve
             response.setBody("[]");
             response.withIsBase64Encoded(false);
             
-            // Set headers with CORS support
+            // Note: CORS headers are handled by Function URL configuration
             java.util.Map<String, String> headers = new java.util.HashMap<>();
             headers.put("Content-Type", "application/json");
-            headers.put("Access-Control-Allow-Origin", "*");
-            headers.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-            headers.put("Access-Control-Allow-Headers", "Content-Type, Authorization");
             response.setHeaders(headers);
             
             return response;

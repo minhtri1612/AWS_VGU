@@ -34,7 +34,7 @@ public class LambdaDeleteObjects implements RequestHandler<APIGatewayProxyReques
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent request, Context context) {
-
+        // Note: OPTIONS preflight is handled by Function URL CORS configuration
         String requestBody = request.getBody();
         
         context.getLogger().log("Raw request body: " + requestBody);
@@ -186,12 +186,9 @@ public class LambdaDeleteObjects implements RequestHandler<APIGatewayProxyReques
         response.setStatusCode(statusCode);
         response.setBody(body);
         
-        // Set headers with CORS support
+        // Note: CORS headers are handled by Function URL configuration
         java.util.Map<String, String> headers = new java.util.HashMap<>();
         headers.put("Content-Type", "application/json");
-        headers.put("Access-Control-Allow-Origin", "*");
-        headers.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        headers.put("Access-Control-Allow-Headers", "Content-Type, Authorization");
         response.setHeaders(headers);
         
         return response;

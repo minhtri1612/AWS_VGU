@@ -138,12 +138,24 @@ resource "aws_security_group" "compliant" {
   }
 }
 
-resource "aws_vpc_security_group_ingress_rule" "db" {
-  security_group_id            = aws_security_group.compliant.id
-  referenced_security_group_id = aws_security_group.source.id
-  from_port                    = 5432
-  to_port                      = 5432
-  ip_protocol                  = "tcp"
+# MySQL access from anywhere (for RDS public access)
+resource "aws_vpc_security_group_ingress_rule" "mysql" {
+  security_group_id = aws_security_group.compliant.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 3306
+  to_port           = 3306
+  ip_protocol       = "tcp"
+  description       = "Allow MySQL access from anywhere"
+}
+
+# All traffic from your IP (for full access)
+resource "aws_vpc_security_group_ingress_rule" "all_traffic_my_ip" {
+  security_group_id = aws_security_group.compliant.id
+  cidr_ipv4         = "104.28.205.72/32"  # Your current IP - update if it changes
+  from_port         = -1
+  to_port           = -1
+  ip_protocol       = "-1"
+  description       = "Allow all traffic from My IP"
 }
 
 resource "aws_security_group" "non_compliant" {

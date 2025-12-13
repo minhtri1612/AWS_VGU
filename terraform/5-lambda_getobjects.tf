@@ -15,3 +15,18 @@ resource "aws_lambda_function" "get_objects" {
     }
   }
 }
+
+# Lambda Function URL for GetObjects (Download)
+resource "aws_lambda_function_url" "get_objects" {
+  function_name      = aws_lambda_function.get_objects.function_name
+  authorization_type = "NONE"
+
+  cors {
+    allow_credentials = false
+    allow_origins     = ["*"]
+    allow_methods     = ["*"]
+    allow_headers     = ["*"]
+    expose_headers    = []
+    max_age           = 0
+  }
+}
