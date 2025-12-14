@@ -78,6 +78,29 @@ resource "aws_iam_role_policy" "lambda_invoke_policy" {
   })
 }
 
+# Policy to allow Lambda to start Step Functions executions
+resource "aws_iam_role_policy" "lambda_step_functions_policy" {
+  name = "${var.project_name}-lambda-step-functions-policy"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "states:StartExecution",
+          "states:DescribeExecution"
+        ]
+        Resource = [
+          aws_sfn_state_machine.upload_workflow.arn,
+          "${aws_sfn_state_machine.upload_workflow.arn}:*"
+        ]
+      }
+    ]
+  })
+}
+
 
 resource "aws_iam_role" "amplify_service_role" {
   name = "amplify-service-role"

@@ -106,7 +106,7 @@ public class LambdaUploadObjects implements
             s3Client.putObject(putObjectRequest, RequestBody.fromBytes(objBytes));
             
             context.getLogger().log("Upload to S3 completed successfully");
-            
+
             response.setStatusCode(200);
             response.setBody("Object uploaded successfully");
             response.withIsBase64Encoded(false);

@@ -113,3 +113,13 @@ output "get_resized_image_function_url" {
   description = "Lambda Function URL for GetResizedImage (Thumbnail)"
   value       = aws_lambda_function_url.get_resized_image.function_url
 }
+
+output "step_functions_state_machine_arn" {
+  description = "Step Functions State Machine ARN"
+  value       = aws_sfn_state_machine.upload_workflow.arn
+}
+
+output "step_functions_state_machine_url" {
+  description = "Step Functions State Machine Console URL"
+  value       = "https://console.aws.amazon.com/states/home?region=${var.aws_region}#/statemachines/view/${aws_sfn_state_machine.upload_workflow.arn}"
+}

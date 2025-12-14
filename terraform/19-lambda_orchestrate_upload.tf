@@ -14,13 +14,22 @@ resource "aws_lambda_function" "orchestrate_upload" {
       ADD_PHOTO_DB_FUNC_NAME    = aws_lambda_function.add_photo_db.function_name
       UPLOAD_OBJECTS_FUNC_NAME  = aws_lambda_function.upload_objects.function_name
       RESIZE_WRAPPER_FUNC_NAME   = aws_lambda_function.resize_wrapper.function_name
+      DELETE_OBJECTS_FUNC_NAME  = aws_lambda_function.delete_objects.function_name
+      STATE_MACHINE_ARN         = aws_sfn_state_machine.upload_workflow.arn
+      RDS_HOSTNAME              = "project1.c986iw6k2ihl.ap-southeast-2.rds.amazonaws.com"
+      RDS_PORT                  = "3306"
+      DB_USER                   = "cloud26"
+      DB_PASSWORD               = "Cloud26Password123!"
+      DB_NAME                   = "Cloud26"
     }
   }
 
   depends_on = [
     aws_lambda_function.add_photo_db,
     aws_lambda_function.upload_objects,
-    aws_lambda_function.resize_wrapper
+    aws_lambda_function.resize_wrapper,
+    aws_lambda_function.delete_objects,
+    aws_sfn_state_machine.upload_workflow
   ]
 }
 
