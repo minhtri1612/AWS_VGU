@@ -11,10 +11,10 @@ resource "aws_lambda_function" "get_photos_db" {
 
   environment {
     variables = {
-      RDS_HOSTNAME = "project1.c986iw6k2ihl.ap-southeast-2.rds.amazonaws.com"
+      RDS_HOSTNAME = "project1.cbmawawwgw2n.ap-southeast-2.rds.amazonaws.com"
       RDS_PORT     = "3306"
-      DB_USER      = "cloud26"
-      DB_PASSWORD  = "Cloud26Password123!"
+      DB_USER      = "admin"
+      DB_PASSWORD  = var.db_password
       DB_NAME      = "Cloud26"
     }
   }

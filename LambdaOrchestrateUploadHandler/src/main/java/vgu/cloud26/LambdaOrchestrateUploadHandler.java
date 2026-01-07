@@ -84,32 +84,70 @@ public class LambdaOrchestrateUploadHandler
 
     LambdaLogger logger = context.getLogger();
     
-    // Handle OPTIONS preflight requests for CORS
-    if ("OPTIONS".equalsIgnoreCase(event.getHttpMethod())) {
-      Map<String, String> headers = new HashMap<>();
-      headers.put("Access-Control-Allow-Origin", "*");
-      headers.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-      headers.put("Access-Control-Allow-Headers", "Content-Type, Authorization");
-      headers.put("Access-Control-Max-Age", "3600");
+    // Helper to add CORS headers to any response
+    Map<String, String> corsHeaders = new HashMap<>();
+    corsHeaders.put("Access-Control-Allow-Origin", "*");
+    corsHeaders.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    corsHeaders.put("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Amz-Date, X-Api-Key");
+    corsHeaders.put("Access-Control-Max-Age", "3600");
+    
+    try {
+      // Handle null event gracefully
+      if (event == null) {
+        logger.log("ERROR: Received null event");
+        return new APIGatewayProxyResponseEvent()
+            .withStatusCode(400)
+            .withHeaders(corsHeaders)
+            .withBody("{\"error\":\"Invalid request: event is null\"}")
+            .withIsBase64Encoded(false);
+      }
+      
+      // Handle OPTIONS preflight requests for CORS
+      String httpMethod = event.getHttpMethod();
+      if (httpMethod != null && "OPTIONS".equalsIgnoreCase(httpMethod)) {
+        return new APIGatewayProxyResponseEvent()
+            .withStatusCode(200)
+            .withHeaders(corsHeaders)
+            .withBody("");
+      }
+
+      // Determine operation type based on HTTP method
+      httpMethod = httpMethod != null ? httpMethod.toUpperCase() : "POST";
+      String userRequestBody = event.getBody();
+      logger.log("HTTP Method: " + httpMethod);
+      logger.log("Original request body length: " + (userRequestBody != null ? userRequestBody.length() : 0));
+
+      // Handle DELETE operation
+      if ("DELETE".equals(httpMethod)) {
+        APIGatewayProxyResponseEvent response = handleDeleteOperation(userRequestBody, logger);
+        // Ensure CORS headers are present
+        if (response.getHeaders() == null) {
+          response.setHeaders(new HashMap<>());
+        }
+        response.getHeaders().putAll(corsHeaders);
+        return response;
+      }
+
+      // Handle POST operation (Upload workflow)
+      APIGatewayProxyResponseEvent response = handleUploadOperation(userRequestBody, logger);
+      // Ensure CORS headers are present
+      if (response.getHeaders() == null) {
+        response.setHeaders(new HashMap<>());
+      }
+      response.getHeaders().putAll(corsHeaders);
+      return response;
+      
+    } catch (Exception e) {
+      logger.log("ERROR in handleRequest: " + e.getMessage());
+      e.printStackTrace();
+      JSONObject errorResult = new JSONObject();
+      errorResult.put("error", "Internal server error: " + e.getMessage());
       return new APIGatewayProxyResponseEvent()
-          .withStatusCode(200)
-          .withHeaders(headers)
-          .withBody("");
+          .withStatusCode(500)
+          .withHeaders(corsHeaders)
+          .withBody(errorResult.toString())
+          .withIsBase64Encoded(false);
     }
-
-    // Determine operation type based on HTTP method
-    String httpMethod = event.getHttpMethod() != null ? event.getHttpMethod().toUpperCase() : "POST";
-    String userRequestBody = event.getBody();
-    logger.log("HTTP Method: " + httpMethod);
-    logger.log("Original request body length: " + (userRequestBody != null ? userRequestBody.length() : 0));
-
-    // Handle DELETE operation
-    if ("DELETE".equals(httpMethod)) {
-      return handleDeleteOperation(userRequestBody, logger);
-    }
-
-    // Handle POST operation (Upload workflow)
-    return handleUploadOperation(userRequestBody, logger);
   }
 
   // Handle DELETE workflow: Delete from DB + Delete from S3 (both buckets)
@@ -162,6 +200,9 @@ public class LambdaOrchestrateUploadHandler
 
       Map<String, String> headers = new HashMap<>();
       headers.put("Content-Type", "application/json");
+      headers.put("Access-Control-Allow-Origin", "*");
+      headers.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      headers.put("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
       return new APIGatewayProxyResponseEvent()
           .withStatusCode(200)
@@ -215,6 +256,9 @@ public class LambdaOrchestrateUploadHandler
 
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "application/json");
+        headers.put("Access-Control-Allow-Origin", "*");
+        headers.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        headers.put("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
         return new APIGatewayProxyResponseEvent()
             .withStatusCode(200)
@@ -283,6 +327,9 @@ public class LambdaOrchestrateUploadHandler
       // Return Combined Report
       Map<String, String> headers = new HashMap<>();
       headers.put("Content-Type", "application/json");
+      headers.put("Access-Control-Allow-Origin", "*");
+      headers.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      headers.put("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
       return new APIGatewayProxyResponseEvent()
           .withStatusCode(200)
@@ -397,6 +444,9 @@ public class LambdaOrchestrateUploadHandler
     
     Map<String, String> headers = new HashMap<>();
     headers.put("Content-Type", "application/json");
+    headers.put("Access-Control-Allow-Origin", "*");
+    headers.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    headers.put("Access-Control-Allow-Headers", "Content-Type, Authorization");
     
     return new APIGatewayProxyResponseEvent()
         .withStatusCode(statusCode)

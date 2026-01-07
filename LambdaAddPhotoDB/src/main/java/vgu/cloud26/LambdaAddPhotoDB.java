@@ -31,10 +31,21 @@ public class LambdaAddPhotoDB
       // 1. Parse the body with error handling
       String requestBody = event.getBody();
       
-      logger.log("Received body: " + requestBody);
+      logger.log("Received body length: " + (requestBody != null ? requestBody.length() : 0));
       
       if (requestBody == null || requestBody.isEmpty() || requestBody.equals("{}")) {
         return createResponse(400, "Error: Request body is empty");
+      }
+
+      // Decode base64 if flag is set
+      if (event.getIsBase64Encoded() != null && event.getIsBase64Encoded()) {
+        try {
+          byte[] decodedBytes = java.util.Base64.getDecoder().decode(requestBody);
+          requestBody = new String(decodedBytes, java.nio.charset.StandardCharsets.UTF_8);
+          logger.log("Decoded base64 request body (flag was set)");
+        } catch (Exception e) {
+          logger.log("Failed to decode base64 body: " + e.getMessage());
+        }
       }
 
       // Handle wrapped body from EntryPoint or direct Lambda invocation
@@ -44,7 +55,7 @@ public class LambdaAddPhotoDB
         // Check if wrapped by EntryPoint or LambdaUploadObjects
         if (bodyJSON.has("body") && bodyJSON.has("httpMethod")) {
           String actualBody = bodyJSON.getString("body");
-          logger.log("Extracted actual body from wrapper: " + actualBody);
+          logger.log("Extracted actual body from wrapper");
           if (actualBody != null && !actualBody.isEmpty() && !actualBody.equals("{}")) {
             bodyJSON = new JSONObject(actualBody);
           } else {
@@ -52,8 +63,26 @@ public class LambdaAddPhotoDB
           }
         }
       } catch (Exception e) {
-        logger.log("Failed to parse body: " + e.getMessage() + ", body was: " + requestBody);
-        return createResponse(400, "Error: Invalid JSON in request body: " + e.getMessage());
+        // If JSON parsing failed, try base64 decoding as fallback (even if flag wasn't set)
+        logger.log("Failed to parse as JSON, trying base64 decode: " + e.getMessage());
+        try {
+          byte[] decodedBytes = java.util.Base64.getDecoder().decode(requestBody);
+          String decodedBody = new String(decodedBytes, java.nio.charset.StandardCharsets.UTF_8);
+          logger.log("Successfully decoded base64, now parsing JSON");
+          bodyJSON = new JSONObject(decodedBody);
+          // Check if wrapped by orchestrator
+          if (bodyJSON.has("body") && bodyJSON.has("httpMethod")) {
+            String actualBody = bodyJSON.getString("body");
+            if (actualBody != null && !actualBody.isEmpty() && !actualBody.equals("{}")) {
+              bodyJSON = new JSONObject(actualBody);
+            } else {
+              return createResponse(400, "Error: Empty body in wrapper");
+            }
+          }
+        } catch (Exception decodeException) {
+          logger.log("Failed to decode base64 or parse JSON: " + decodeException.getMessage());
+          return createResponse(400, "Error: Invalid JSON in request body: " + e.getMessage());
+        }
       }
 
       // Extract required fields
@@ -68,9 +97,32 @@ public class LambdaAddPhotoDB
 
       Class.forName("com.mysql.cj.jdbc.Driver");
 
-      // 2. Connect and Insert (using ACTUAL filename, not hash)
+      // 2. Connect to MySQL server (without database name) to create database if needed
+      String serverUrl = "jdbc:mysql://" + RDS_INSTANCE_HOSTNAME + ":" + RDS_INSTANCE_PORT;
       Properties props = setMySqlConnectionProperties();
+      
+      try (Connection serverConnection = DriverManager.getConnection(serverUrl, props)) {
+        // Create database if it doesn't exist
+        try (java.sql.Statement stmt = serverConnection.createStatement()) {
+          stmt.executeUpdate("CREATE DATABASE IF NOT EXISTS " + DB_NAME);
+          logger.log("Database " + DB_NAME + " created or already exists");
+        }
+      }
+      
+      // 3. Connect to the specific database and create table if needed
       try (Connection mySQLClient = DriverManager.getConnection(JDBC_URL, props)) {
+        // Create table if it doesn't exist
+        try (java.sql.Statement stmt = mySQLClient.createStatement()) {
+          String createTableSql = "CREATE TABLE IF NOT EXISTS Photos (" +
+              "ID INT AUTO_INCREMENT PRIMARY KEY, " +
+              "Description VARCHAR(255), " +
+              "S3Key VARCHAR(255)" +
+              ")";
+          stmt.executeUpdate(createTableSql);
+          logger.log("Table Photos created or already exists");
+        }
+        
+        // 4. Insert the photo record
         String sql = "INSERT INTO Photos (Description, S3Key) VALUES (?, ?)";
         try (PreparedStatement st = mySQLClient.prepareStatement(sql)) {
           st.setString(1, description); // User's Description

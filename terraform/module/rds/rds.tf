@@ -5,6 +5,11 @@ locals {
       version = "8.0.43"  # Change from 8.0.36 to 8.0.43
       family  = "mysql8.0"
     }
+    "postgres" = {
+      engine  = "postgres"
+      version = "13.7"
+      family  = "postgres13"
+    }
   }
 }
 

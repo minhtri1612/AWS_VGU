@@ -16,10 +16,10 @@ resource "aws_lambda_function" "orchestrate_upload" {
       RESIZE_WRAPPER_FUNC_NAME   = aws_lambda_function.resize_wrapper.function_name
       DELETE_OBJECTS_FUNC_NAME  = aws_lambda_function.delete_objects.function_name
       STATE_MACHINE_ARN         = aws_sfn_state_machine.upload_workflow.arn
-      RDS_HOSTNAME              = "project1.c986iw6k2ihl.ap-southeast-2.rds.amazonaws.com"
+      RDS_HOSTNAME              = "project1.cbmawawwgw2n.ap-southeast-2.rds.amazonaws.com"
       RDS_PORT                  = "3306"
-      DB_USER                   = "cloud26"
-      DB_PASSWORD               = "Cloud26Password123!"
+      DB_USER                   = "admin"
+      DB_PASSWORD               = var.db_password
       DB_NAME                   = "Cloud26"
     }
   }
@@ -47,4 +47,7 @@ resource "aws_lambda_function_url" "orchestrate_upload" {
     max_age           = 0
   }
 }
+
+# Note: Lambda Function URL with authorization_type = "NONE" automatically creates
+# the resource-based policy. No explicit permission needed via Terraform.
 

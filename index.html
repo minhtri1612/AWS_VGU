@@ -33,12 +33,29 @@
         </div>
 
         <script>
-            // Lambda Function URLs (from Terraform output)
-            const ORCHESTRATOR_URL = "https://livtv3rbwgycjau3uilixlk7oa0boejd.lambda-url.ap-southeast-2.on.aws/"; 
-            const LIST_URL = "https://da6uu2jrke2tk6mjehr2zwpaz40zffbx.lambda-url.ap-southeast-2.on.aws/";
-            const DOWNLOAD_URL = "https://mjq5iysw3ctlrzeq5g2zccfbl40cdxas.lambda-url.ap-southeast-2.on.aws/";
-            const DELETE_URL = "https://vngwzx4vo5qp2cbdesvccfwyou0akybn.lambda-url.ap-southeast-2.on.aws/";
-            const THUMBNAIL_URL = "https://knapnrjrakaf5q62kvnqcwvigu0owkhg.lambda-url.ap-southeast-2.on.aws/";
+            // Using API Gateway instead of Function URLs (Function URLs have 403 issues)
+            const API_GATEWAY_BASE = "https://2sw1v03u1g.execute-api.ap-southeast-2.amazonaws.com/dev";
+            const ORCHESTRATOR_URL = API_GATEWAY_BASE + "/orchestrator"; 
+            const LIST_URL = API_GATEWAY_BASE + "?format=json";  // GET with format=json routes to list
+            const DOWNLOAD_URL = API_GATEWAY_BASE;  // PUT request routes to get/download
+            const DELETE_URL = API_GATEWAY_BASE;  // DELETE request routes to delete
+            const THUMBNAIL_URL = API_GATEWAY_BASE + "?format=resized";  // GET with format=resized
+            
+            // Helper function to validate URLs
+            function validateUrl(url, name) {
+                if (!url || url.trim() === "" || !url.startsWith("https://")) {
+                    console.error(`Invalid ${name} URL: ${url}`);
+                    return false;
+                }
+                return true;
+            }
+            
+            // Validate all URLs on load
+            window.addEventListener('DOMContentLoaded', function() {
+                if (!validateUrl(ORCHESTRATOR_URL, "ORCHESTRATOR")) {
+                    alert("ERROR: ORCHESTRATOR_URL is invalid. Please update the URL in index.html");
+                }
+            });
 
             fetchListOfObjects();
 
@@ -54,6 +71,16 @@
 
                 let file = file_input.files[0];
                 let description = desc_input.value;
+                
+                // Check file size - Lambda Function URLs have 6MB limit
+                const MAX_SIZE = 6 * 1024 * 1024; // 6MB
+                if (file.size > MAX_SIZE) {
+                    const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                    status_div.innerText = `ERROR: File too large (${sizeMB}MB).\n\nLambda Function URLs have a 6MB payload limit.\n\nYour file is ${sizeMB}MB. Please:\n1. Compress/resize the image, or\n2. Use a smaller file.\n\nMaximum file size: 6MB`;
+                    alert(`File is too large (${sizeMB}MB). Maximum size is 6MB. Please compress or resize the image.`);
+                    return;
+                }
+                
                 status_div.innerText = "Processing upload...";
 
                 let reader = new FileReader();
@@ -78,13 +105,51 @@
 
             function sendToOrchestrator(jsonBody) {
                 let status_div = document.getElementById("status_message");
+                
+                // Validate URL before making request
+                if (!validateUrl(ORCHESTRATOR_URL, "ORCHESTRATOR")) {
+                    status_div.innerText = "ERROR: Invalid ORCHESTRATOR_URL. Please check index.html and update with correct Lambda Function URL from Terraform outputs.";
+                    return;
+                }
+
+                console.log('Sending request to:', ORCHESTRATOR_URL);
+                console.log('Request body size:', JSON.stringify(jsonBody).length, 'bytes');
 
                 fetch(ORCHESTRATOR_URL, {
                      method: 'POST',
                      body: JSON.stringify(jsonBody),
-                     headers: { 'Content-Type': 'application/json' }
+                     headers: { 
+                         'Content-Type': 'application/json',
+                         'Accept': 'application/json'
+                     },
+                     mode: 'cors', // Explicitly enable CORS
+                     credentials: 'omit' // Don't send credentials
                 })
-                .then((resp) => resp.json()) // Orchestrator returns JSON
+                .then((resp) => {
+                    console.log('Response status:', resp.status);
+                    console.log('Response headers:', resp.headers);
+                    
+                    // Handle 413 Payload Too Large specifically
+                    if (resp.status === 413) {
+                        throw new Error("413: Payload Too Large - File exceeds 6MB limit");
+                    }
+                    
+                    if (!resp.ok) {
+                        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+                    }
+                    
+                    // Try to parse as JSON
+                    return resp.json().catch(() => {
+                        // If not JSON, return as text
+                        return resp.text().then(text => {
+                            try {
+                                return JSON.parse(text);
+                            } catch {
+                                return { message: text };
+                            }
+                        });
+                    });
+                })
                 .then(function(response) {
                     console.info('Orchestrator Response:', response);
                     
@@ -97,7 +162,36 @@
                 })
                 .catch(error => {
                     console.error('Upload Error:', error);
-                    status_div.innerText = "Upload Failed: " + error.message;
+                    console.error('Error details:', {
+                        name: error.name,
+                        message: error.message,
+                        stack: error.stack
+                    });
+                    
+                    let errorMsg = "Upload Failed: " + error.message;
+                    
+                    // Check for 413 Payload Too Large error
+                    if (error.message.includes("413") || error.message.includes("Payload Too Large") || error.message.includes("Request Entity Too Large")) {
+                        errorMsg = "ERROR: File too large!\n\n";
+                        errorMsg += "Lambda Function URLs have a 6MB payload limit.\n";
+                        errorMsg += "Your file exceeds this limit.\n\n";
+                        errorMsg += "Solutions:\n";
+                        errorMsg += "1. Compress/resize the image to under 6MB\n";
+                        errorMsg += "2. Use a smaller file\n";
+                        errorMsg += "3. Split large files into smaller chunks\n\n";
+                        errorMsg += "Maximum file size: 6MB";
+                    } else if (error.message.includes("NetworkError") || error.message.includes("Failed to fetch")) {
+                        errorMsg += "\n\nPossible causes:\n";
+                        errorMsg += "1. Lambda Function URL is incorrect or doesn't exist\n";
+                        errorMsg += "2. CORS is not properly configured\n";
+                        errorMsg += "3. Network connectivity issue\n";
+                        errorMsg += "4. Lambda function is not deployed\n\n";
+                        errorMsg += "To fix:\n";
+                        errorMsg += "1. Run: terraform output orchestrator_function_url\n";
+                        errorMsg += "2. Update ORCHESTRATOR_URL in index.html\n";
+                        errorMsg += "3. Check AWS Console: Lambda > Functions > LambdaOrchestrateUploadHandler > Configuration > Function URL";
+                    }
+                    status_div.innerText = errorMsg;
                 });
             }
 
@@ -180,8 +274,8 @@
 
             // Helper function to fetch the image and set the src
             function fetchThumbnail(key, imgElement) {
-                // We send the key in the body (or you could use query param ?key=...)
-                fetch(THUMBNAIL_URL, {
+                // Use API Gateway with format=resized query parameter
+                fetch(API_GATEWAY_BASE + "?format=resized", {
                     method: 'POST',
                     body: JSON.stringify({ "key": key }),
                     headers: { 'Content-Type': 'application/json' }
@@ -203,9 +297,10 @@
 
             function fetchObject(key) {
                 const body = { "key": key };
-                fetch(DOWNLOAD_URL, {
+                fetch(API_GATEWAY_BASE, {
                             method: 'PUT',
-                            body: JSON.stringify(body)
+                            body: JSON.stringify(body),
+                            headers: { 'Content-Type': 'application/json' }
                         })
                         .then(response => response.blob())
                         .then((myBlob) => {
@@ -216,7 +311,7 @@
 
             function deleteObject(key) {
                 const body = { "key": key };
-                fetch(DELETE_URL, {
+                fetch(API_GATEWAY_BASE, {
                     method: 'DELETE', 
                     body: JSON.stringify(body),
                     headers: { 'Content-Type': 'application/json' }

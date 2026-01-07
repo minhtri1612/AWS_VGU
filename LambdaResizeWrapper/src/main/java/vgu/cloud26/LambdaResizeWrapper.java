@@ -45,21 +45,61 @@ public class LambdaResizeWrapper implements RequestHandler<APIGatewayProxyReques
         
         try {
             // Parse request body
-            // When invoked directly by orchestrator, event.getBody() contains the raw JSON
-            // When invoked via Function URL, event.getBody() also contains the raw JSON
+            // When invoked directly by orchestrator, event.getBody() contains a wrapped JSON with "body", "httpMethod", "headers"
+            // When invoked via Function URL, event.getBody() contains the raw JSON
             String requestBody = event.getBody();
             if (requestBody == null || requestBody.isEmpty()) {
                 return createErrorResponse(400, "Error: Request body is empty");
             }
 
+            // Decode base64 if flag is set
+            if (event.getIsBase64Encoded() != null && event.getIsBase64Encoded()) {
+                try {
+                    byte[] decodedBytes = java.util.Base64.getDecoder().decode(requestBody);
+                    requestBody = new String(decodedBytes, java.nio.charset.StandardCharsets.UTF_8);
+                    logger.log("Decoded base64 request body (flag was set)");
+                } catch (Exception e) {
+                    logger.log("Failed to decode base64 body: " + e.getMessage());
+                }
+            }
+
             JSONObject bodyJSON;
             try {
                 bodyJSON = new JSONObject(requestBody);
-                // The orchestrator now passes the raw body directly, so no unwrapping needed
+                // Check if wrapped by orchestrator (has "body" and "httpMethod" keys)
+                if (bodyJSON.has("body") && bodyJSON.has("httpMethod")) {
+                    // Extract the actual body from the wrapper
+                    String actualBody = bodyJSON.getString("body");
+                    logger.log("Extracted actual body from wrapper");
+                    if (actualBody != null && !actualBody.isEmpty() && !actualBody.equals("{}")) {
+                        bodyJSON = new JSONObject(actualBody);
+                    } else {
+                        return createErrorResponse(400, "Error: Empty body in wrapper");
+                    }
+                }
                 logger.log("Parsed body JSON, has content: " + bodyJSON.has("content") + ", has key: " + bodyJSON.has("key"));
             } catch (Exception e) {
-                logger.log("Failed to parse body: " + e.getMessage() + ", body was: " + requestBody.substring(0, Math.min(200, requestBody.length())));
-                return createErrorResponse(400, "Error: Invalid JSON in request body: " + e.getMessage());
+                // If JSON parsing failed, try base64 decoding as fallback (even if flag wasn't set)
+                logger.log("Failed to parse as JSON, trying base64 decode: " + e.getMessage());
+                try {
+                    byte[] decodedBytes = java.util.Base64.getDecoder().decode(requestBody);
+                    String decodedBody = new String(decodedBytes, java.nio.charset.StandardCharsets.UTF_8);
+                    logger.log("Successfully decoded base64, now parsing JSON");
+                    bodyJSON = new JSONObject(decodedBody);
+                    // Check if wrapped by orchestrator
+                    if (bodyJSON.has("body") && bodyJSON.has("httpMethod")) {
+                        String actualBody = bodyJSON.getString("body");
+                        if (actualBody != null && !actualBody.isEmpty() && !actualBody.equals("{}")) {
+                            bodyJSON = new JSONObject(actualBody);
+                        } else {
+                            return createErrorResponse(400, "Error: Empty body in wrapper");
+                        }
+                    }
+                    logger.log("Parsed decoded body JSON, has content: " + bodyJSON.has("content") + ", has key: " + bodyJSON.has("key"));
+                } catch (Exception decodeException) {
+                    logger.log("Failed to decode base64 or parse JSON: " + decodeException.getMessage() + ", original body start: " + requestBody.substring(0, Math.min(200, requestBody.length())));
+                    return createErrorResponse(400, "Error: Invalid JSON in request body: " + e.getMessage());
+                }
             }
 
             if (!bodyJSON.has("content") || !bodyJSON.has("key")) {

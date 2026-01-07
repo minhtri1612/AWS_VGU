@@ -19,13 +19,13 @@ variable "project_name" {
 variable "source_bucket_name" {
   description = "S3 bucket name for original objects"
   type        = string
-  default     = "minhtri-devops-cloud-getobjects"
+  default     = "minhtri-devops-cloud-getobjects-864992048128"
 }
 
 variable "resized_bucket_name" {
   description = "S3 bucket name for resized images"
   type        = string
-  default     = "minhtri-devops-cloud-resized"
+  default     = "minhtri-devops-cloud-resized-864992048128"
 }
 
 variable "lambda_timeout" {
