@@ -5,10 +5,6 @@ import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
@@ -16,7 +12,6 @@ import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
-import java.time.Duration;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,12 +32,17 @@ import software.amazon.awssdk.services.sfn.model.StartExecutionRequest;
 import software.amazon.awssdk.services.sfn.model.StartExecutionResponse;
 import software.amazon.awssdk.services.sfn.model.DescribeExecutionRequest;
 import software.amazon.awssdk.services.sfn.model.ExecutionStatus;
+import software.amazon.awssdk.services.ssm.SsmClient;
+import software.amazon.awssdk.services.ssm.model.GetParameterRequest;
+import software.amazon.awssdk.services.ssm.model.GetParameterResponse;
+import software.amazon.awssdk.services.ssm.model.SsmException;
 
 public class LambdaOrchestrateUploadHandler
     implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
   private final LambdaClient lambdaClient;
   private final SfnClient sfnClient;
+  private final SsmClient ssmClient;
   private final ExecutorService executorService;
 
   // Get function names from environment variables (UPLOAD-ONLY ORCHESTRATOR)
@@ -60,6 +60,7 @@ public class LambdaOrchestrateUploadHandler
   public LambdaOrchestrateUploadHandler() {
     this.lambdaClient = LambdaClient.builder().region(Region.AP_SOUTHEAST_2).build();
     this.sfnClient = SfnClient.builder().region(Region.AP_SOUTHEAST_2).build();
+    this.ssmClient = SsmClient.builder().region(Region.AP_SOUTHEAST_2).build();
     this.executorService = Executors.newFixedThreadPool(4); // For up to 4 concurrent activities
   }
 
@@ -494,44 +495,35 @@ public class LambdaOrchestrateUploadHandler
   }
 
   /**
-   * Get SECRET_KEY from AWS Systems Manager Parameter Store via Lambda Extension
+   * Get SECRET_KEY from AWS Systems Manager Parameter Store via AWS SDK
    * @param logger Lambda logger
    * @return SECRET_KEY value, or null if error
    */
   private String getSecretKeyFromParameterStore(LambdaLogger logger) {
     try {
-      HttpClient client = HttpClient.newBuilder()
-          .version(HttpClient.Version.HTTP_1_1)
-          .followRedirects(HttpClient.Redirect.NORMAL)
-          .connectTimeout(Duration.ofSeconds(10))
-          .build();
+      // Use AWS SDK to get parameter from Parameter Store
+      GetParameterRequest parameterRequest = GetParameterRequest.builder()
+              .name("keytokenhash")
+              .withDecryption(true) // Decrypt SecureString
+              .build();
 
-      String sessionToken = System.getenv("AWS_SESSION_TOKEN");
-      
-      HttpRequest requestParameter = HttpRequest.newBuilder()
-          .uri(URI.create("http://localhost:2773/systemsmanager/parameters/get/?name=keytokenhash&withDecryption=true"))
-          .header("Accept", "application/json")
-          .header("X-Aws-Parameters-Secrets-Token", sessionToken != null ? sessionToken : "")
-          .GET()
-          .build();
-
-      HttpResponse<String> responseParameter = client.send(requestParameter, HttpResponse.BodyHandlers.ofString());
-
-      if (responseParameter.statusCode() != 200) {
-        logger.log("Failed to get parameter from Parameter Store. Status: " + responseParameter.statusCode());
-        return null;
-      }
-
-      String jsonResponse = responseParameter.body();
-      JSONObject jsonBody = new JSONObject(jsonResponse);
-      JSONObject parameter = jsonBody.getJSONObject("Parameter");
-      String secretKey = parameter.getString("Value");
+      GetParameterResponse parameterResponse = ssmClient.getParameter(parameterRequest);
+      String secretKey = parameterResponse.parameter().value();
 
       logger.log("Successfully retrieved SECRET_KEY from Parameter Store");
       return secretKey;
 
-    } catch (Exception e) {
+    } catch (SsmException e) {
       logger.log("Error retrieving SECRET_KEY from Parameter Store: " + e.getMessage());
+      // Fallback to env var if Parameter Store fails
+      String fallbackKey = System.getenv("SECRET_KEY");
+      if (fallbackKey != null && !fallbackKey.isEmpty()) {
+        logger.log("Using SECRET_KEY from environment variable as fallback");
+        return fallbackKey;
+      }
+      return null;
+    } catch (Exception e) {
+      logger.log("Unexpected error retrieving SECRET_KEY: " + e.getMessage());
       // Fallback to env var if Parameter Store fails
       String fallbackKey = System.getenv("SECRET_KEY");
       if (fallbackKey != null && !fallbackKey.isEmpty()) {

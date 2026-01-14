@@ -371,3 +371,4 @@ Return valid/invalid
 - **Workers**: LambdaAddPhotoDB, LambdaGetPhotosDB, LambdaUploadObjects, LambdaResizeWrapper, LambdaGetObjects, LambdaGetResizedImage, LambdaDeleteObjects, LambdaDeleteResizedObject, LambdaGetListOfObjects
 - **Support**: LambdaTokenChecker (có thể unused), LambdaResize
 
+

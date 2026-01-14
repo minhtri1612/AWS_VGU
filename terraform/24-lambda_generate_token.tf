@@ -9,6 +9,10 @@ resource "aws_lambda_function" "generate_token" {
   timeout          = var.lambda_timeout
   memory_size      = var.lambda_memory
 
+  # Note: Extension Layer requires special permissions or use SDK directly
+  # For now, we'll attach manually via AWS Console or use SDK
+  # layers = [local.ssm_extension_layer_arn]
+
   environment {
     variables = {
       # SECRET_KEY removed - now retrieved from Parameter Store via HTTP

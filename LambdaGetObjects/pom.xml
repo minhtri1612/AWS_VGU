@@ -51,6 +51,11 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>lambda</artifactId>
         </dependency>
+        
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>ssm</artifactId>
+        </dependency>
      
         <dependency>
             <groupId>org.json</groupId>

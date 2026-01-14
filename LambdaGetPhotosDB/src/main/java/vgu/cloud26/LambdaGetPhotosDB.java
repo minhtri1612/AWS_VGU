@@ -5,10 +5,6 @@ import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
@@ -16,13 +12,18 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.time.Duration;
 import java.util.Base64;
 import java.util.Properties;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.json.JSONArray;
 import org.json.JSONObject;
+
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.ssm.SsmClient;
+import software.amazon.awssdk.services.ssm.model.GetParameterRequest;
+import software.amazon.awssdk.services.ssm.model.GetParameterResponse;
+import software.amazon.awssdk.services.ssm.model.SsmException;
 
 public class LambdaGetPhotosDB
     implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
@@ -44,6 +45,11 @@ public class LambdaGetPhotosDB
 
   private static final String JDBC_URL = "jdbc:mysql://" + RDS_INSTANCE_HOSTNAME + ":" + RDS_INSTANCE_PORT_STR + "/"
       + DB_NAME;
+
+  // Static SSM Client for Parameter Store access
+  private static final SsmClient ssmClient = SsmClient.builder()
+          .region(Region.AP_SOUTHEAST_2)
+          .build();
 
   @Override
   public APIGatewayProxyResponseEvent handleRequest(
@@ -225,38 +231,29 @@ public class LambdaGetPhotosDB
    */
   private String getSecretKeyFromParameterStore(LambdaLogger logger) {
     try {
-      HttpClient client = HttpClient.newBuilder()
-          .version(HttpClient.Version.HTTP_1_1)
-          .followRedirects(HttpClient.Redirect.NORMAL)
-          .connectTimeout(Duration.ofSeconds(10))
-          .build();
+      // Use AWS SDK to get parameter from Parameter Store
+      GetParameterRequest parameterRequest = GetParameterRequest.builder()
+              .name("keytokenhash")
+              .withDecryption(true) // Decrypt SecureString
+              .build();
 
-      String sessionToken = System.getenv("AWS_SESSION_TOKEN");
-      
-      HttpRequest requestParameter = HttpRequest.newBuilder()
-          .uri(URI.create("http://localhost:2773/systemsmanager/parameters/get/?name=keytokenhash&withDecryption=true"))
-          .header("Accept", "application/json")
-          .header("X-Aws-Parameters-Secrets-Token", sessionToken != null ? sessionToken : "")
-          .GET()
-          .build();
-
-      HttpResponse<String> responseParameter = client.send(requestParameter, HttpResponse.BodyHandlers.ofString());
-
-      if (responseParameter.statusCode() != 200) {
-        logger.log("Failed to get parameter from Parameter Store. Status: " + responseParameter.statusCode());
-        return null;
-      }
-
-      String jsonResponse = responseParameter.body();
-      JSONObject jsonBody = new JSONObject(jsonResponse);
-      JSONObject parameter = jsonBody.getJSONObject("Parameter");
-      String secretKey = parameter.getString("Value");
+      GetParameterResponse parameterResponse = ssmClient.getParameter(parameterRequest);
+      String secretKey = parameterResponse.parameter().value();
 
       logger.log("Successfully retrieved SECRET_KEY from Parameter Store");
       return secretKey;
 
-    } catch (Exception e) {
+    } catch (SsmException e) {
       logger.log("Error retrieving SECRET_KEY from Parameter Store: " + e.getMessage());
+      // Fallback to env var if Parameter Store fails
+      String fallbackKey = System.getenv("SECRET_KEY");
+      if (fallbackKey != null && !fallbackKey.isEmpty()) {
+        logger.log("Using SECRET_KEY from environment variable as fallback");
+        return fallbackKey;
+      }
+      return null;
+    } catch (Exception e) {
+      logger.log("Unexpected error retrieving SECRET_KEY: " + e.getMessage());
       // Fallback to env var if Parameter Store fails
       String fallbackKey = System.getenv("SECRET_KEY");
       if (fallbackKey != null && !fallbackKey.isEmpty()) {

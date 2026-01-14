@@ -39,6 +39,13 @@
             <version>20240303</version>
         </dependency>
 
+        <!-- AWS SDK v2 for SSM Parameter Store -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>ssm</artifactId>
+            <version>2.20.0</version>
+        </dependency>
+
     </dependencies>
 
     <build>
