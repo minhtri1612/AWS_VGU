@@ -29,23 +29,29 @@ public class LambdaDeleteObjects implements RequestHandler<APIGatewayProxyReques
             .build();
 
     // 2. CONFIGURATION: Dynamic Bucket Names
-    private static final String SOURCE_BUCKET_NAME = System.getenv().getOrDefault("BUCKET_NAME", "minhtri-devops-cloud-getobjects");
-    private static final String RESIZED_BUCKET_NAME = System.getenv().getOrDefault("RESIZED_BUCKET_NAME", "minhtri-devops-cloud-resized");
+    private static final String SOURCE_BUCKET_NAME = System.getenv("BUCKET_NAME");
+    private static final String RESIZED_BUCKET_NAME = System.getenv("RESIZED_BUCKET_NAME");
+
+    static {
+        if (SOURCE_BUCKET_NAME == null || RESIZED_BUCKET_NAME == null) {
+            throw new RuntimeException("Missing required environment variables: BUCKET_NAME, RESIZED_BUCKET_NAME");
+        }
+    }
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent request, Context context) {
         // Note: OPTIONS preflight is handled by Function URL CORS configuration
         String requestBody = request.getBody();
-        
+
         context.getLogger().log("Raw request body: " + requestBody);
-        
+
         // Check if the body is base64 encoded
         if (requestBody != null && !requestBody.startsWith("{")) {
             try {
                 // Try to decode as base64
                 byte[] decodedBytes = java.util.Base64.getDecoder().decode(requestBody);
                 String decodedBody = new String(decodedBytes, java.nio.charset.StandardCharsets.UTF_8);
-                
+
                 // If decoded successfully and looks like JSON, use it
                 if (decodedBody.trim().startsWith("{")) {
                     requestBody = decodedBody;
@@ -56,7 +62,7 @@ public class LambdaDeleteObjects implements RequestHandler<APIGatewayProxyReques
                 // If decoding fails, continue with original body
             }
         }
-        
+
         // Handle both direct calls and calls through entry point
         if (requestBody != null && requestBody.startsWith("{")) {
             try {
@@ -72,15 +78,15 @@ public class LambdaDeleteObjects implements RequestHandler<APIGatewayProxyReques
                 context.getLogger().log("Failed to parse wrapped request: " + e.getMessage());
             }
         }
-        
+
         // Check if requestBody is null or empty
         if (requestBody == null || requestBody.trim().isEmpty()) {
             context.getLogger().log("Request body is null or empty");
             return createResponse(400, new JSONObject().put("error", "Request body is required").toString());
         }
-        
+
         context.getLogger().log("Final request body to parse: " + requestBody);
-        
+
         JSONObject bodyJSON;
         try {
             bodyJSON = new JSONObject(requestBody);
@@ -103,20 +109,32 @@ public class LambdaDeleteObjects implements RequestHandler<APIGatewayProxyReques
             return createResponse(400, new JSONObject().put("error", "Missing 'key' or 'keys' field").toString());
         }
 
+        // SECURITY: Don't trust the client - verify token and get email from token
+        String token = bodyJSON.optString("token", null);
+        String email = verifyTokenAndGetEmail(token, context);
+        if (email == null) {
+            return createResponse(403, new JSONObject().put("error", "Invalid or expired token").toString());
+        }
+
+        // SECURITY: Verify ownership - check if all photos belong to the authenticated user
+        if (!verifyPhotoOwnership(keys, email, context)) {
+            return createResponse(403, new JSONObject().put("error", "You don't have permission to delete these photos").toString());
+        }
+
         JSONObject result = new JSONObject();
 
         try {
             if (keys.size() == 1) {
                 // Delete Single - from both buckets
                 String key = keys.get(0);
-                
+
                 // Delete from source bucket
                 DeleteObjectRequest deleteSourceRequest = DeleteObjectRequest.builder()
                         .bucket(SOURCE_BUCKET_NAME)
                         .key(key)
                         .build();
                 s3Client.deleteObject(deleteSourceRequest);
-                
+
                 // Delete from resized bucket (with "resized-" prefix)
                 try {
                     String resizedKey = "resized-" + key;
@@ -125,7 +143,8 @@ public class LambdaDeleteObjects implements RequestHandler<APIGatewayProxyReques
                             .key(resizedKey)
                             .build();
                     s3Client.deleteObject(deleteResizedRequest);
-                    context.getLogger().log("Deleted from both source (" + key + ") and resized (" + resizedKey + ") buckets");
+                    context.getLogger()
+                            .log("Deleted from both source (" + key + ") and resized (" + resizedKey + ") buckets");
                 } catch (Exception e) {
                     context.getLogger().log("Could not delete from resized bucket (may not exist): " + e.getMessage());
                 }
@@ -137,7 +156,7 @@ public class LambdaDeleteObjects implements RequestHandler<APIGatewayProxyReques
                 // Delete Multiple - from both buckets
                 List<ObjectIdentifier> toDeleteSource = new ArrayList<>();
                 List<ObjectIdentifier> toDeleteResized = new ArrayList<>();
-                
+
                 for (String k : keys) {
                     toDeleteSource.add(ObjectIdentifier.builder().key(k).build());
                     toDeleteResized.add(ObjectIdentifier.builder().key("resized-" + k).build());
@@ -153,7 +172,7 @@ public class LambdaDeleteObjects implements RequestHandler<APIGatewayProxyReques
                 // Delete from resized bucket
                 List<String> deleted = new ArrayList<>();
                 deleteSourceResponse.deleted().forEach(d -> deleted.add(d.key()));
-                
+
                 try {
                     DeleteObjectsRequest deleteResizedRequest = DeleteObjectsRequest.builder()
                             .bucket(RESIZED_BUCKET_NAME)
@@ -180,17 +199,109 @@ public class LambdaDeleteObjects implements RequestHandler<APIGatewayProxyReques
         }
     }
 
+    // SECURITY: Verify token and get email from database (don't trust client)
+    private String verifyTokenAndGetEmail(String token, Context context) {
+        if (token == null || token.isEmpty()) {
+            context.getLogger().log("No token provided");
+            return null;
+        }
+
+        try {
+            String rdsHostname = System.getenv("RDS_HOSTNAME");
+            String rdsPort = System.getenv("RDS_PORT");
+            String dbUser = System.getenv("DB_USER");
+            String dbPassword = System.getenv("DB_PASSWORD");
+            String dbName = System.getenv("DB_NAME");
+
+            if (rdsHostname == null || rdsPort == null || dbUser == null || dbPassword == null || dbName == null) {
+                context.getLogger().log("Missing RDS environment variables");
+                return null;
+            }
+
+            String jdbcUrl = "jdbc:mysql://" + rdsHostname + ":" + rdsPort + "/" + dbName;
+            java.util.Properties props = new java.util.Properties();
+            props.setProperty("useSSL", "true");
+            props.setProperty("user", dbUser);
+            props.setProperty("password", dbPassword);
+
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            try (java.sql.Connection connection = java.sql.DriverManager.getConnection(jdbcUrl, props)) {
+                String sql = "SELECT Email FROM Tokens WHERE Token = ? AND ExpiresAt > NOW()";
+                try (java.sql.PreparedStatement st = connection.prepareStatement(sql)) {
+                    st.setString(1, token);
+                    try (java.sql.ResultSet rs = st.executeQuery()) {
+                        if (rs.next()) {
+                            String email = rs.getString("Email");
+                            context.getLogger().log("Token verified, email from token: " + email);
+                            return email;
+                        } else {
+                            context.getLogger().log("Invalid or expired token");
+                            return null;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            context.getLogger().log("Error verifying token: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // SECURITY: Verify that all photos belong to the authenticated user
+    private boolean verifyPhotoOwnership(List<String> keys, String email, Context context) {
+        try {
+            String rdsHostname = System.getenv("RDS_HOSTNAME");
+            String rdsPort = System.getenv("RDS_PORT");
+            String dbUser = System.getenv("DB_USER");
+            String dbPassword = System.getenv("DB_PASSWORD");
+            String dbName = System.getenv("DB_NAME");
+
+            if (rdsHostname == null || rdsPort == null || dbUser == null || dbPassword == null || dbName == null) {
+                context.getLogger().log("Missing RDS environment variables");
+                return false;
+            }
+
+            String jdbcUrl = "jdbc:mysql://" + rdsHostname + ":" + rdsPort + "/" + dbName;
+            java.util.Properties props = new java.util.Properties();
+            props.setProperty("useSSL", "true");
+            props.setProperty("user", dbUser);
+            props.setProperty("password", dbPassword);
+
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            try (java.sql.Connection connection = java.sql.DriverManager.getConnection(jdbcUrl, props)) {
+                // Check if all photos belong to this email
+                for (String key : keys) {
+                    String sql = "SELECT COUNT(*) as count FROM Photos WHERE S3Key = ? AND Email = ?";
+                    try (java.sql.PreparedStatement st = connection.prepareStatement(sql)) {
+                        st.setString(1, key);
+                        st.setString(2, email);
+                        try (java.sql.ResultSet rs = st.executeQuery()) {
+                            if (rs.next() && rs.getInt("count") == 0) {
+                                context.getLogger().log("Photo " + key + " does not belong to " + email);
+                                return false;
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+        } catch (Exception e) {
+            context.getLogger().log("Error verifying ownership: " + e.getMessage());
+            return false;
+        }
+    }
+
     // Helper method to keep code clean
     private APIGatewayProxyResponseEvent createResponse(int statusCode, String body) {
         APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
         response.setStatusCode(statusCode);
         response.setBody(body);
-        
+
         // Note: CORS headers are handled by Function URL configuration
         java.util.Map<String, String> headers = new java.util.HashMap<>();
         headers.put("Content-Type", "application/json");
         response.setHeaders(headers);
-        
+
         return response;
     }
 }

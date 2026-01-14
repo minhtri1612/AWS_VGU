@@ -9,11 +9,25 @@ resource "aws_lambda_function" "get_objects" {
   timeout          = var.lambda_timeout
   memory_size      = var.lambda_memory
 
+  # Note: Extension Layer requires special permissions or use SDK directly
+  # For now, we'll use SDK calls (slower but works without layer permissions)
+  # layers = [local.ssm_extension_layer_arn]
+
   environment {
     variables = {
-      BUCKET_NAME = aws_s3_bucket.source_bucket.id
+      BUCKET_NAME            = aws_s3_bucket.source_bucket.id
+      TOKEN_CHECKER_FUNC_NAME = aws_lambda_function.token_checker.function_name
+      RDS_HOSTNAME           = module.database.rds_instance_address
+      RDS_PORT               = tostring(module.database.rds_instance_port)
+      DB_USER                = "admin"
+      DB_PASSWORD            = var.db_password
+      DB_NAME                = "Cloud26"
     }
   }
+
+  depends_on = [
+    aws_lambda_function.token_checker
+  ]
 }
 
 # Lambda Function URL for GetObjects (Download)

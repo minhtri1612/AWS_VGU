@@ -154,3 +154,8 @@ echo "URLs updated in index.html"
 4. Check if Lambda functions have proper IAM roles
 5. Review CloudWatch logs for Lambda execution errors
 
+
+
+
+
+

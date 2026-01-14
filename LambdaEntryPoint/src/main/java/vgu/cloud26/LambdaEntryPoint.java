@@ -29,9 +29,9 @@ public class LambdaEntryPoint implements
             .build();
     
     // 2. CONFIGURATION: Get function names from Env Vars
-    private static final String DELETE_FUNC_NAME = System.getenv().getOrDefault("DELETE_FUNC_NAME", "LambdaDeleteObjects");
+    private static final String DELETE_FUNC_NAME = System.getenv().getOrDefault("DELETE_FUNC_NAME", "LambdaOrchestrateDeleteHandler");
     private static final String GET_FUNC_NAME = System.getenv().getOrDefault("GET_FUNC_NAME", "LambdaGetObjects");
-    private static final String UPLOAD_FUNC_NAME = System.getenv().getOrDefault("UPLOAD_FUNC_NAME", "LambdaUploadObjects");
+    private static final String UPLOAD_FUNC_NAME = System.getenv().getOrDefault("UPLOAD_FUNC_NAME", "LambdaOrchestrateUploadHandler");
     private static final String LIST_FUNC_NAME = System.getenv().getOrDefault("LIST_FUNC_NAME", "LambdaGetListOfObjects");
     private static final String GET_RESIZED_FUNC_NAME = System.getenv().getOrDefault("GET_RESIZED_FUNC_NAME", "LambdaGetResizedImage");
     private static final String GET_PHOTOS_DB_FUNC_NAME = System.getenv().getOrDefault("GET_PHOTOS_DB_FUNC_NAME", "LambdaGetPhotosDB");

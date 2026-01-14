@@ -33,11 +33,16 @@ public class LambdaResize implements RequestHandler<S3Event, String> {
     private static final S3Client s3Client = S3Client.builder()
             .region(Region.AP_SOUTHEAST_2)
             .build();
-            
+
     // 2. CONFIGURATION: Target Bucket for Resized Images
-    // You MUST set this Env Variable in AWS Console to your SECOND bucket name
-    private static final String DEST_BUCKET_NAME = System.getenv().getOrDefault("DEST_BUCKET_NAME", "minhtri-devops-cloud-resized");
-            
+    private static final String DEST_BUCKET_NAME = System.getenv("DEST_BUCKET_NAME");
+
+    static {
+        if (DEST_BUCKET_NAME == null) {
+            throw new RuntimeException("Missing required environment variable: DEST_BUCKET_NAME");
+        }
+    }
+
     private static final float MAX_DIMENSION = 100;
     private final String REGEX = ".*\\.([^\\.]*)";
     private final String JPG_TYPE = "jpg";
@@ -51,7 +56,7 @@ public class LambdaResize implements RequestHandler<S3Event, String> {
 
         try {
             S3EventNotificationRecord record = s3event.getRecords().get(0);
-            
+
             String srcBucket = record.getS3().getBucket().getName();
             String srcKey = record.getS3().getObject().getUrlDecodedKey();
 

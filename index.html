@@ -1,16 +1,41 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>Bucket List</title>
+        <title>Secure Photo Gallery</title>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .login-section, .upload-section { margin-bottom: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
             table, th, td { border: 1px solid; border-collapse: collapse; padding: 5px; }
+            th { background-color: #f0f0f0; }
             #status_message { white-space: pre-wrap; margin-top: 10px; font-family: monospace; }
+            input[type="text"], input[type="email"] { width: 250px; padding: 5px; margin: 5px; }
+            button { padding: 8px 15px; margin: 5px; cursor: pointer; }
+            button:disabled { opacity: 0.5; cursor: not-allowed; }
+            .error { color: red; }
+            .success { color: green; }
+            img.thumbnail { max-width: 50px; max-height: 50px; }
         </style>
     </head>
     <body>
-        <div class="upload-section">
+        <!-- Login Section -->
+        <div class="login-section">
+            <h3>Login</h3>
+            <div>
+                <label for="email_input">Email: </label>
+                <input type="email" id="email_input" placeholder="Enter email">
+            </div>
+            <div style="margin-top: 5px;">
+                <label for="token_input">Token: </label>
+                <input type="text" id="token_input" placeholder="Enter token">
+            </div>
+            <button id="login_button" onclick="handleLogin()">Login</button>
+            <div id="login_status"></div>
+        </div>
+
+        <!-- Upload Section (hidden until logged in) -->
+        <div class="upload-section" id="upload_section" style="display: none;">
             <h3>Upload New File</h3>
             <div>
                 <label for="file_input">File: </label>
@@ -24,7 +49,11 @@
             <div id="status_message"></div>
         </div>
 
-        <div><h1>Bucket List</h1></div>
+        <!-- Bucket List Section -->
+        <div>
+            <h1>Bucket List</h1>
+            <button id="list_button" onclick="fetchListOfObjects()" disabled>List</button>
+        </div>
         <div>
             <table id="objectsTable"></table>
         </div>
@@ -33,33 +62,118 @@
         </div>
 
         <script>
-            // Using API Gateway instead of Function URLs (Function URLs have 403 issues)
+            // API Gateway base URL
             const API_GATEWAY_BASE = "https://2sw1v03u1g.execute-api.ap-southeast-2.amazonaws.com/dev";
-            const ORCHESTRATOR_URL = API_GATEWAY_BASE + "/orchestrator"; 
-            const LIST_URL = API_GATEWAY_BASE + "?format=json";  // GET with format=json routes to list
-            const DOWNLOAD_URL = API_GATEWAY_BASE;  // PUT request routes to get/download
-            const DELETE_URL = API_GATEWAY_BASE;  // DELETE request routes to delete
-            const THUMBNAIL_URL = API_GATEWAY_BASE + "?format=resized";  // GET with format=resized
+            const AUTH_URL = API_GATEWAY_BASE + "/auth";
+            const ORCHESTRATOR_URL = API_GATEWAY_BASE + "/orchestrator";
+            const LIST_URL = API_GATEWAY_BASE + "?format=photos";
             
-            // Helper function to validate URLs
-            function validateUrl(url, name) {
-                if (!url || url.trim() === "" || !url.startsWith("https://")) {
-                    console.error(`Invalid ${name} URL: ${url}`);
-                    return false;
-                }
-                return true;
-            }
-            
-            // Validate all URLs on load
+            // Global state for authentication
+            let currentEmail = "";
+            let currentToken = "";
+            let isAuthenticated = false;
+
+            // Initialize - page starts empty (security measure)
             window.addEventListener('DOMContentLoaded', function() {
-                if (!validateUrl(ORCHESTRATOR_URL, "ORCHESTRATOR")) {
-                    alert("ERROR: ORCHESTRATOR_URL is invalid. Please update the URL in index.html");
-                }
+                // Don't fetch anything until user logs in
+                document.getElementById("objectsTable").innerHTML = "";
             });
 
-            fetchListOfObjects();
+            // Login handler
+            async function handleLogin() {
+                const email = document.getElementById("email_input").value.trim();
+                const token = document.getElementById("token_input").value.trim();
+                const loginStatus = document.getElementById("login_status");
 
+                if (!email || !email.includes("@")) {
+                    loginStatus.innerHTML = '<span class="error">Please enter a valid email address</span>';
+                    return;
+                }
+
+                // If token is provided, verify it
+                if (token) {
+                    const verified = await verifyToken(email, token);
+                    if (verified) {
+                        currentEmail = email;
+                        currentToken = token;
+                        isAuthenticated = true;
+                        loginStatus.innerHTML = '<span class="success">Login successful!</span>';
+                        document.getElementById("list_button").disabled = false;
+                        document.getElementById("upload_section").style.display = "block";
+                    } else {
+                        loginStatus.innerHTML = '<span class="error">Invalid token. Please check your email and try again.</span>';
+                        isAuthenticated = false;
+                        document.getElementById("list_button").disabled = true;
+                        document.getElementById("upload_section").style.display = "none";
+                    }
+                } else {
+                    // Request token (no SES needed - token returned directly)
+                    loginStatus.innerHTML = 'Generating token...';
+                    const success = await requestToken(email);
+                    if (success) {
+                        loginStatus.innerHTML = '<span class="success">Token generated! Token has been auto-filled. Click Login again to verify.</span>';
+                    } else {
+                        loginStatus.innerHTML = '<span class="error">Failed to generate token. Please try again.</span>';
+                    }
+                }
+            }
+
+            // Request token via email
+            async function requestToken(email) {
+                try {
+                    const response = await fetch(AUTH_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            action: "request_token",
+                            email: email
+                        }),
+                        headers: { 'Content-Type': 'application/json' },
+                        mode: 'cors'
+                    });
+
+                    const data = await response.json();
+                    // Token is returned directly in response (no SES needed)
+                    if (response.ok && data.token) {
+                        // Auto-fill token field
+                        document.getElementById("token_input").value = data.token;
+                        return true;
+                    }
+                    return response.ok && data.message && (data.message.includes("generated") || data.message.includes("success"));
+                } catch (error) {
+                    console.error("Error requesting token:", error);
+                    return false;
+                }
+            }
+
+            // Verify token
+            async function verifyToken(email, token) {
+                try {
+                    const response = await fetch(AUTH_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            action: "verify_token",
+                            email: email,
+                            token: token
+                        }),
+                        headers: { 'Content-Type': 'application/json' },
+                        mode: 'cors'
+                    });
+
+                    const data = await response.json();
+                    return response.ok && data.valid === true;
+                } catch (error) {
+                    console.error("Error verifying token:", error);
+                    return false;
+                }
+            }
+
+            // Upload function (requires authentication)
             function uploadObject() {
+                if (!isAuthenticated || !currentEmail || !currentToken) {
+                    alert("Please login first!");
+                    return;
+                }
+
                 let file_input = document.getElementById("file_input");
                 let desc_input = document.getElementById("description_input");
                 let status_div = document.getElementById("status_message");
@@ -72,12 +186,11 @@
                 let file = file_input.files[0];
                 let description = desc_input.value;
                 
-                // Check file size - Lambda Function URLs have 6MB limit
                 const MAX_SIZE = 6 * 1024 * 1024; // 6MB
                 if (file.size > MAX_SIZE) {
                     const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-                    status_div.innerText = `ERROR: File too large (${sizeMB}MB).\n\nLambda Function URLs have a 6MB payload limit.\n\nYour file is ${sizeMB}MB. Please:\n1. Compress/resize the image, or\n2. Use a smaller file.\n\nMaximum file size: 6MB`;
-                    alert(`File is too large (${sizeMB}MB). Maximum size is 6MB. Please compress or resize the image.`);
+                    status_div.innerText = `ERROR: File too large (${sizeMB}MB). Maximum size is 6MB.`;
+                    alert(`File is too large (${sizeMB}MB). Maximum size is 6MB.`);
                     return;
                 }
                 
@@ -87,11 +200,12 @@
                 reader.onload = () => {
                     const uint8Array = new Uint8Array(reader.result);
                     
-                    // Construct the payload for the Orchestrator
                     const body = {
                         "content": uint8Array.toBase64(),
                         "key": file.name,
-                        "description": description // Added description
+                        "description": description,
+                        "token": currentToken,
+                        "email": currentEmail // SECURITY: Send both email and token for hash verification
                     };
                     
                     sendToOrchestrator(body);
@@ -105,15 +219,6 @@
 
             function sendToOrchestrator(jsonBody) {
                 let status_div = document.getElementById("status_message");
-                
-                // Validate URL before making request
-                if (!validateUrl(ORCHESTRATOR_URL, "ORCHESTRATOR")) {
-                    status_div.innerText = "ERROR: Invalid ORCHESTRATOR_URL. Please check index.html and update with correct Lambda Function URL from Terraform outputs.";
-                    return;
-                }
-
-                console.log('Sending request to:', ORCHESTRATOR_URL);
-                console.log('Request body size:', JSON.stringify(jsonBody).length, 'bytes');
 
                 fetch(ORCHESTRATOR_URL, {
                      method: 'POST',
@@ -122,25 +227,17 @@
                          'Content-Type': 'application/json',
                          'Accept': 'application/json'
                      },
-                     mode: 'cors', // Explicitly enable CORS
-                     credentials: 'omit' // Don't send credentials
+                     mode: 'cors',
+                     credentials: 'omit'
                 })
                 .then((resp) => {
-                    console.log('Response status:', resp.status);
-                    console.log('Response headers:', resp.headers);
-                    
-                    // Handle 413 Payload Too Large specifically
                     if (resp.status === 413) {
                         throw new Error("413: Payload Too Large - File exceeds 6MB limit");
                     }
-                    
                     if (!resp.ok) {
                         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
                     }
-                    
-                    // Try to parse as JSON
                     return resp.json().catch(() => {
-                        // If not JSON, return as text
                         return resp.text().then(text => {
                             try {
                                 return JSON.parse(text);
@@ -152,119 +249,136 @@
                 })
                 .then(function(response) {
                     console.info('Orchestrator Response:', response);
-                    
-                    // Display the results of the 3 activities
-                    // The Orchestrator returns a JSON object with keys like "Activity_1...", etc.
                     status_div.innerText = JSON.stringify(response, null, 4);
-                    
                     // Refresh the list to show the new file
-                    fetchListOfObjects();
+                    if (isAuthenticated) {
+                        fetchListOfObjects();
+                    }
                 })
                 .catch(error => {
                     console.error('Upload Error:', error);
-                    console.error('Error details:', {
-                        name: error.name,
-                        message: error.message,
-                        stack: error.stack
-                    });
-                    
-                    let errorMsg = "Upload Failed: " + error.message;
-                    
-                    // Check for 413 Payload Too Large error
-                    if (error.message.includes("413") || error.message.includes("Payload Too Large") || error.message.includes("Request Entity Too Large")) {
-                        errorMsg = "ERROR: File too large!\n\n";
-                        errorMsg += "Lambda Function URLs have a 6MB payload limit.\n";
-                        errorMsg += "Your file exceeds this limit.\n\n";
-                        errorMsg += "Solutions:\n";
-                        errorMsg += "1. Compress/resize the image to under 6MB\n";
-                        errorMsg += "2. Use a smaller file\n";
-                        errorMsg += "3. Split large files into smaller chunks\n\n";
-                        errorMsg += "Maximum file size: 6MB";
-                    } else if (error.message.includes("NetworkError") || error.message.includes("Failed to fetch")) {
-                        errorMsg += "\n\nPossible causes:\n";
-                        errorMsg += "1. Lambda Function URL is incorrect or doesn't exist\n";
-                        errorMsg += "2. CORS is not properly configured\n";
-                        errorMsg += "3. Network connectivity issue\n";
-                        errorMsg += "4. Lambda function is not deployed\n\n";
-                        errorMsg += "To fix:\n";
-                        errorMsg += "1. Run: terraform output orchestrator_function_url\n";
-                        errorMsg += "2. Update ORCHESTRATOR_URL in index.html\n";
-                        errorMsg += "3. Check AWS Console: Lambda > Functions > LambdaOrchestrateUploadHandler > Configuration > Function URL";
-                    }
-                    status_div.innerText = errorMsg;
+                    status_div.innerText = "Upload Failed: " + error.message;
                 });
             }
 
-            // --- Existing Helper Functions (Unchanged) ---
-
+            // Fetch list of objects (requires authentication)
             function fetchListOfObjects() {
-                fetch(LIST_URL)
-                        .then((response) => {
-                            if (!response.ok) throw new Error(`HTTP error, status = ${response.status}`);
-                            return response.text();
-                        })
-                        .then((text) => {
-                            try {
-                                renderListOfObjects(text);
-                            } catch (e) {
-                                console.error("Error parsing list:", e);
-                            }
-                        })
-                        .catch((error) => console.log(`Error: ${error.message}`));
-            }
+                if (!isAuthenticated || !currentEmail || !currentToken) {
+                    alert("Please login first!");
+                    return;
+                }
 
+                fetch(LIST_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        token: currentToken,
+                        email: currentEmail // SECURITY: Send both email and token for hash verification
+                    }),
+                    headers: { 'Content-Type': 'application/json' },
+                    mode: 'cors'
+                })
+                .then((response) => {
+                    if (!response.ok) throw new Error(`HTTP error, status = ${response.status}`);
+                    return response.text();
+                })
+                .then((text) => {
+                    try {
+                        renderListOfObjects(text);
+                    } catch (e) {
+                        console.error("Error parsing list:", e);
+                    }
+                })
+                .catch((error) => {
+                    console.error("Error fetching list:", error);
+                    alert("Failed to fetch list. Please verify your token.");
+                });
+            }
 
             function renderListOfObjects(listOfObjects) {
                 let objectsTable = document.getElementById("objectsTable");
                 while (objectsTable.firstChild) {
                     objectsTable.removeChild(objectsTable.lastChild);
                 }
+
+                // Create header row
+                let headerRow = document.createElement("tr");
+                let headers = ["Thumbnail", "Filename", "Description", "Email", "Download", "Delete"];
+                headers.forEach(headerText => {
+                    let th = document.createElement("th");
+                    th.textContent = headerText;
+                    headerRow.appendChild(th);
+                });
+                objectsTable.appendChild(headerRow);
+
                 let objectsArray = JSON.parse(listOfObjects);
+
+                if (objectsArray.length === 0) {
+                    let row = document.createElement("tr");
+                    let cell = document.createElement("td");
+                    cell.colSpan = 6;
+                    cell.textContent = "No photos found. Upload some photos to see them here.";
+                    cell.style.textAlign = "center";
+                    row.appendChild(cell);
+                    objectsTable.appendChild(row);
+                    return;
+                }
 
                 for (let i = 0; i < objectsArray.length; i++) {
                     let row = document.createElement("tr");
 
-                    // --- NEW: Thumbnail Column ---
+                    // Thumbnail Column
                     let thumbCell = document.createElement("td");
                     let thumbImg = document.createElement("img");
-                    
-                    // Style the thumbnail
-                    thumbImg.style.width = "50px"; 
-                    thumbImg.style.height = "auto";
+                    thumbImg.className = "thumbnail";
                     thumbImg.alt = "Loading...";
-                    
-                    // We set a temporary loading text or placeholder
-                    // Then we fetch the actual image data
-                    fetchThumbnail(objectsArray[i].key, thumbImg);
-                    
+                    fetchThumbnail(objectsArray[i].S3Key, thumbImg);
                     thumbCell.appendChild(thumbImg);
                     row.appendChild(thumbCell);
-                    // -----------------------------
 
-                    // Existing Key Column
+                    // Filename Column
                     let keyCell = document.createElement("td");
-                    keyCell.innerText = objectsArray[i].key;
+                    keyCell.innerText = objectsArray[i].S3Key;
                     row.appendChild(keyCell);
 
-                    // ... (Keep your existing Download and Delete cells here) ...
+                    // Description Column
+                    let descCell = document.createElement("td");
+                    descCell.innerText = objectsArray[i].Description || "";
+                    row.appendChild(descCell);
+
+                    // Email Column
+                    let emailCell = document.createElement("td");
+                    emailCell.innerText = objectsArray[i].Email || "";
+                    row.appendChild(emailCell);
+
+                    // Download Button Column
                     let downloadCell = document.createElement("td");
-                    // ... code for download button ...
                     let downloadButton = document.createElement("button");
+                    downloadButton.textContent = "Download";
+                    downloadButton.disabled = !isAuthenticated || !currentToken;
                     downloadButton.addEventListener("click", function () {
-                        //downloadObject(objectsArray[i].key);
-                        fetchObject(objectsArray[i].key)
+                        if (!isAuthenticated || !currentToken) {
+                            alert("Please login first!");
+                            return;
+                        }
+                        fetchObject(objectsArray[i].S3Key);
                     });
-                    downloadButton.innerHTML = "Download";
                     downloadCell.appendChild(downloadButton);
                     row.appendChild(downloadCell);
 
+                    // Delete Button Column
                     let deleteCell = document.createElement("td");
-                    // ... code for delete button ...
                     let deleteButton = document.createElement("button");
+                    deleteButton.textContent = "Delete";
+                    deleteButton.disabled = !isAuthenticated || !currentToken;
                     deleteButton.addEventListener("click", function () {
-                        deleteObject(objectsArray[i].key);
+                        if (!isAuthenticated || !currentToken) {
+                            alert("Please login first!");
+                            return;
+                        }
+                        if (confirm("Are you sure you want to delete " + objectsArray[i].S3Key + "?")) {
+                            deleteObject(objectsArray[i].S3Key);
+                        }
                     });
-                    deleteButton.innerHTML = "Delete";
                     deleteCell.appendChild(deleteButton);
                     row.appendChild(deleteCell);
 
@@ -272,49 +386,72 @@
                 }
             }
 
-            // Helper function to fetch the image and set the src
             function fetchThumbnail(key, imgElement) {
-                // Use API Gateway with format=resized query parameter
+                imgElement.alt = "Loading...";
+                imgElement.style.display = "inline-block";
+                
                 fetch(API_GATEWAY_BASE + "?format=resized", {
                     method: 'POST',
                     body: JSON.stringify({ "key": key }),
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: { 'Content-Type': 'application/json' },
+                    mode: 'cors'
                 })
                 .then(response => {
-                    if (!response.ok) throw new Error("No thumbnail");
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
                     return response.blob();
                 })
                 .then(blob => {
-                    // Create a local URL for the blob and set it as the image source
                     const objectURL = URL.createObjectURL(blob);
                     imgElement.src = objectURL;
+                    imgElement.alt = key;
                 })
                 .catch(err => {
-                    console.log("Thumbnail error for " + key, err);
-                    imgElement.alt = "No Img"; // Show text if failed
+                    console.error("Thumbnail error for " + key, err);
+                    imgElement.alt = "No Img";
+                    imgElement.src = "";
+                    imgElement.style.display = "none";
                 });
             } 
 
             function fetchObject(key) {
-                const body = { "key": key };
+                if (!isAuthenticated || !currentToken || !currentEmail) {
+                    alert("Please login first!");
+                    return;
+                }
+
+                const body = { "key": key, "token": currentToken, "email": currentEmail };
                 fetch(API_GATEWAY_BASE, {
-                            method: 'PUT',
-                            body: JSON.stringify(body),
-                            headers: { 'Content-Type': 'application/json' }
-                        })
-                        .then(response => response.blob())
-                        .then((myBlob) => {
-                            const objectURL = URL.createObjectURL(myBlob);
-                            document.getElementById("download_image").src = objectURL;
-                        });
+                    method: 'PUT',
+                    body: JSON.stringify(body),
+                    headers: { 'Content-Type': 'application/json' },
+                    mode: 'cors'
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error("Download failed");
+                    return response.blob();
+                })
+                .then((myBlob) => {
+                    const objectURL = URL.createObjectURL(myBlob);
+                    document.getElementById("download_image").src = objectURL;
+                })
+                .catch(error => {
+                    console.error('Error downloading:', error);
+                    alert('Failed to download. Please verify your token.');
+                });
             }
 
             function deleteObject(key) {
-                const body = { "key": key };
+                if (!isAuthenticated || !currentToken || !currentEmail) {
+                    alert("Please login first!");
+                    return;
+                }
+
+                const body = { "key": key, "token": currentToken, "email": currentEmail };
                 fetch(API_GATEWAY_BASE, {
                     method: 'DELETE', 
                     body: JSON.stringify(body),
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: { 'Content-Type': 'application/json' },
+                    mode: 'cors'
                 })
                 .then(response => {
                     if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
@@ -323,11 +460,11 @@
                 })
                 .catch(error => {
                     console.error('Error deleting:', error.message);
-                    alert('Failed to delete.'); 
+                    alert('Failed to delete. Please verify your token.'); 
                 });
             }
 
-            // Polyfill for toBase64 if not supported by browser natively on Uint8Array
+            // Polyfill for toBase64
             if (!Uint8Array.prototype.toBase64) {
                 Uint8Array.prototype.toBase64 = function() {
                     let binary = '';

@@ -1,6 +1,5 @@
 package vgu.cloud26;
 
-
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
@@ -15,22 +14,26 @@ import software.amazon.awssdk.services.s3.model.ListObjectsRequest;
 import software.amazon.awssdk.services.s3.model.ListObjectsResponse;
 import software.amazon.awssdk.services.s3.model.S3Object;
 
-public class LambdaGetListOfObjects implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
+public class LambdaGetListOfObjects
+        implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent request, Context context) {
         // Note: OPTIONS preflight is handled by Function URL CORS configuration
         context.getLogger().log("Received request: " + request.getBody());
 
-        String bucketName = System.getenv().getOrDefault("BUCKET_NAME", "minhtri-devops-cloud-getobjects");
+        String bucketName = System.getenv("BUCKET_NAME");
+        if (bucketName == null) {
+            throw new RuntimeException("Missing required environment variable: BUCKET_NAME");
+        }
 
         S3Client s3Client = S3Client.builder()
-                //.credentialsProvider(InstanceProfileCredentialsProvider.create())
+                // .credentialsProvider(InstanceProfileCredentialsProvider.create())
                 .region(Region.AP_SOUTHEAST_2)
                 .build();
         ListObjectsRequest listObjects = ListObjectsRequest
                 .builder()
-                 .bucket(bucketName)
+                .bucket(bucketName)
                 .build();
 
         ListObjectsResponse res = s3Client.listObjects(listObjects);
@@ -39,26 +42,36 @@ public class LambdaGetListOfObjects implements RequestHandler<APIGatewayProxyReq
         JSONArray objArray = new JSONArray();
 
         for (S3Object object : objects) {
+            String key = object.key();
+            
+            // Filter out index.html (frontend file) and test files
+            if (key.equals("index.html") || 
+                key.startsWith("test") || 
+                key.startsWith("warmup") ||
+                key.equals("mqtt3.png")) {
+                continue; // Skip these files
+            }
+            
             JSONObject obj = new JSONObject();
-            obj.put("key", object.key());
+            obj.put("key", key);
             obj.put("size", calKb(object.size()));
             objArray.put(obj);
 
         }
 
-        APIGatewayProxyResponseEvent response
-                = new APIGatewayProxyResponseEvent();
+        APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
         response.setStatusCode(200);
         response.setBody(objArray.toString());
-        
+
         // Note: CORS headers are handled by Function URL configuration
         java.util.Map<String, String> headers = new java.util.HashMap<>();
         headers.put("Content-Type", "application/json");
         response.setHeaders(headers);
-        
+
         return response;
     }
-    //convert bytes to kbs.
+
+    // convert bytes to kbs.
     private static long calKb(Long val) {
         return val / 1024;
     }

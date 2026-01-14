@@ -24,13 +24,19 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 public class LambdaResizeWrapper implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
-    
+
     private static final S3Client s3Client = S3Client.builder()
             .region(Region.AP_SOUTHEAST_2)
             .build();
-            
-    private static final String DEST_BUCKET_NAME = System.getenv().getOrDefault("DEST_BUCKET_NAME", "minhtri-devops-cloud-resized");
-    private static final String SOURCE_BUCKET_NAME = System.getenv().getOrDefault("BUCKET_NAME", "minhtri-devops-cloud-getobjects");
+
+    private static final String DEST_BUCKET_NAME = System.getenv("DEST_BUCKET_NAME");
+    private static final String SOURCE_BUCKET_NAME = System.getenv("BUCKET_NAME");
+
+    static {
+        if (DEST_BUCKET_NAME == null || SOURCE_BUCKET_NAME == null) {
+            throw new RuntimeException("Missing required environment variables: DEST_BUCKET_NAME, BUCKET_NAME");
+        }
+    }
     private static final float MAX_DIMENSION = 100;
     private final String REGEX = ".*\\.([^\\.]*)";
     private final String JPG_TYPE = "jpg";
@@ -42,10 +48,11 @@ public class LambdaResizeWrapper implements RequestHandler<APIGatewayProxyReques
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent event, Context context) {
         LambdaLogger logger = context.getLogger();
         APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
-        
+
         try {
             // Parse request body
-            // When invoked directly by orchestrator, event.getBody() contains a wrapped JSON with "body", "httpMethod", "headers"
+            // When invoked directly by orchestrator, event.getBody() contains a wrapped
+            // JSON with "body", "httpMethod", "headers"
             // When invoked via Function URL, event.getBody() contains the raw JSON
             String requestBody = event.getBody();
             if (requestBody == null || requestBody.isEmpty()) {
@@ -77,9 +84,11 @@ public class LambdaResizeWrapper implements RequestHandler<APIGatewayProxyReques
                         return createErrorResponse(400, "Error: Empty body in wrapper");
                     }
                 }
-                logger.log("Parsed body JSON, has content: " + bodyJSON.has("content") + ", has key: " + bodyJSON.has("key"));
+                logger.log("Parsed body JSON, has content: " + bodyJSON.has("content") + ", has key: "
+                        + bodyJSON.has("key"));
             } catch (Exception e) {
-                // If JSON parsing failed, try base64 decoding as fallback (even if flag wasn't set)
+                // If JSON parsing failed, try base64 decoding as fallback (even if flag wasn't
+                // set)
                 logger.log("Failed to parse as JSON, trying base64 decode: " + e.getMessage());
                 try {
                     byte[] decodedBytes = java.util.Base64.getDecoder().decode(requestBody);
@@ -95,9 +104,12 @@ public class LambdaResizeWrapper implements RequestHandler<APIGatewayProxyReques
                             return createErrorResponse(400, "Error: Empty body in wrapper");
                         }
                     }
-                    logger.log("Parsed decoded body JSON, has content: " + bodyJSON.has("content") + ", has key: " + bodyJSON.has("key"));
+                    logger.log("Parsed decoded body JSON, has content: " + bodyJSON.has("content") + ", has key: "
+                            + bodyJSON.has("key"));
                 } catch (Exception decodeException) {
-                    logger.log("Failed to decode base64 or parse JSON: " + decodeException.getMessage() + ", original body start: " + requestBody.substring(0, Math.min(200, requestBody.length())));
+                    logger.log("Failed to decode base64 or parse JSON: " + decodeException.getMessage()
+                            + ", original body start: "
+                            + requestBody.substring(0, Math.min(200, requestBody.length())));
                     return createErrorResponse(400, "Error: Invalid JSON in request body: " + e.getMessage());
                 }
             }
@@ -120,7 +132,7 @@ public class LambdaResizeWrapper implements RequestHandler<APIGatewayProxyReques
                 logger.log("Invalid base64 content: " + e.getMessage());
                 return createErrorResponse(400, "Error: Invalid base64 content: " + e.getMessage());
             }
-            
+
             // Infer image type
             Matcher matcher = Pattern.compile(REGEX).matcher(srcKey);
             if (!matcher.matches()) {
@@ -136,13 +148,15 @@ public class LambdaResizeWrapper implements RequestHandler<APIGatewayProxyReques
             ByteArrayInputStream inputStream = new ByteArrayInputStream(imageBytes);
             BufferedImage srcImage = ImageIO.read(inputStream);
             if (srcImage == null) {
-                logger.log("ImageIO.read returned null for key: " + srcKey + ", image bytes length: " + imageBytes.length);
-                return createErrorResponse(400, "Could not read image: " + srcKey + " (possibly unsupported format or corrupted data)");
+                logger.log(
+                        "ImageIO.read returned null for key: " + srcKey + ", image bytes length: " + imageBytes.length);
+                return createErrorResponse(400,
+                        "Could not read image: " + srcKey + " (possibly unsupported format or corrupted data)");
             }
             logger.log("Successfully read image, dimensions: " + srcImage.getWidth() + "x" + srcImage.getHeight());
-            
+
             BufferedImage newImage = resizeImage(srcImage);
-            
+
             // Re-encode
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             ImageIO.write(newImage, imageType, outputStream);
@@ -163,22 +177,22 @@ public class LambdaResizeWrapper implements RequestHandler<APIGatewayProxyReques
                     .build();
 
             s3Client.putObject(putObjectRequest, RequestBody.fromBytes(outputStream.toByteArray()));
-            
+
             logger.log("Successfully resized and uploaded to " + DEST_BUCKET_NAME + "/" + dstKey);
-            
+
             response.setStatusCode(200);
             response.setBody("Object successfully resized and uploaded");
             response.withIsBase64Encoded(false);
-            
+
             Map<String, String> headers = new HashMap<>();
             headers.put("Content-Type", "text/plain");
             headers.put("Access-Control-Allow-Origin", "*");
             headers.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
             headers.put("Access-Control-Allow-Headers", "Content-Type");
             response.setHeaders(headers);
-            
+
             return response;
-            
+
         } catch (Exception e) {
             logger.log("Error in resize: " + e.getMessage());
             return createErrorResponse(500, "Error resizing image: " + e.getMessage());
@@ -207,15 +221,14 @@ public class LambdaResizeWrapper implements RequestHandler<APIGatewayProxyReques
         response.setStatusCode(statusCode);
         response.setBody(message);
         response.withIsBase64Encoded(false);
-        
+
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "text/plain");
         headers.put("Access-Control-Allow-Origin", "*");
         headers.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         headers.put("Access-Control-Allow-Headers", "Content-Type");
         response.setHeaders(headers);
-        
+
         return response;
     }
 }
-

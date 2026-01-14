@@ -71,7 +71,32 @@ resource "aws_iam_role_policy" "lambda_invoke_policy" {
           aws_lambda_function.get_photos_db.arn,
           aws_lambda_function.add_photo_db.arn,
           aws_lambda_function.orchestrate_upload.arn,
-          aws_lambda_function.resize_wrapper.arn
+          aws_lambda_function.orchestrate_delete_handler.arn,
+          aws_lambda_function.resize_wrapper.arn,
+          aws_lambda_function.token_checker.arn,
+          aws_lambda_function.generate_token.arn
+        ]
+      }
+    ]
+  })
+}
+
+# Policy to allow Lambda to read SSM Parameter Store
+resource "aws_iam_role_policy" "lambda_ssm_policy" {
+  name = "${var.project_name}-lambda-ssm-policy"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters"
+        ]
+        Resource = [
+          "arn:aws:ssm:ap-southeast-2:864992048128:parameter/keytokenhash"
         ]
       }
     ]
@@ -90,12 +115,34 @@ resource "aws_iam_role_policy" "lambda_step_functions_policy" {
         Effect = "Allow"
         Action = [
           "states:StartExecution",
-          "states:DescribeExecution"
+          "states:DescribeExecution",
+          "states:DescribeStateMachine"
         ]
         Resource = [
           aws_sfn_state_machine.upload_workflow.arn,
-          "${aws_sfn_state_machine.upload_workflow.arn}:*"
+          "${aws_sfn_state_machine.upload_workflow.arn}:*",
+          "arn:aws:states:ap-southeast-2:864992048128:execution:${aws_sfn_state_machine.upload_workflow.name}:*"
         ]
+      }
+    ]
+  })
+}
+
+# SES policy for Lambda to send emails
+resource "aws_iam_role_policy" "lambda_ses_policy" {
+  name = "${var.project_name}-lambda-ses-policy"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ses:SendEmail",
+          "ses:SendRawEmail"
+        ]
+        Resource = "*"
       }
     ]
   })

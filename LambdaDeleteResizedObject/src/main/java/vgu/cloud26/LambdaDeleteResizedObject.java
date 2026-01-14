@@ -13,7 +13,14 @@ public class LambdaDeleteResizedObject implements RequestHandler<S3Event, String
   private final AmazonS3 s3Client = AmazonS3ClientBuilder.defaultClient();
 
   // 2. Define the name of your resized bucket from environment variable
-  private final String RESIZED_BUCKET_NAME = System.getenv().getOrDefault("RESIZED_BUCKET_NAME", "minhtri-devops-cloud-resized");
+  private final String RESIZED_BUCKET_NAME;
+
+  public LambdaDeleteResizedObject() {
+    RESIZED_BUCKET_NAME = System.getenv("RESIZED_BUCKET_NAME");
+    if (RESIZED_BUCKET_NAME == null) {
+      throw new RuntimeException("Missing required environment variable: RESIZED_BUCKET_NAME");
+    }
+  }
 
   @Override
   public String handleRequest(S3Event event, Context context) {

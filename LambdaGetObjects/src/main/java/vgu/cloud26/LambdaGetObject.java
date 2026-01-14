@@ -1,17 +1,32 @@
 package vgu.cloud26;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.Base64;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import org.json.JSONObject;
 
 import com.amazonaws.services.lambda.runtime.Context;
+import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 
 import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.lambda.LambdaClient;
+import software.amazon.awssdk.services.lambda.model.InvokeRequest;
+import software.amazon.awssdk.services.lambda.model.InvokeResponse;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
@@ -21,34 +36,46 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.model.S3Exception;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.List;
 import java.util.ArrayList;
 
 public class LambdaGetObject implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
-    // 1. OPTIMIZATION: Static Client
+    // 1. OPTIMIZATION: Static Clients
     private static final S3Client s3Client = S3Client.builder()
             .region(Region.AP_SOUTHEAST_2)
             .build();
+    
+    private static final LambdaClient lambdaClient = LambdaClient.builder()
+            .region(Region.AP_SOUTHEAST_2)
+            .build();
 
-    // 2. CONFIGURATION: Environment Variable for Bucket
-    private static final String BUCKET_NAME = System.getenv().getOrDefault("BUCKET_NAME", "minhtri-devops-cloud-getobjects");
+    // 2. CONFIGURATION: Environment Variables
+    private static final String BUCKET_NAME = System.getenv("BUCKET_NAME");
+    private static final String TOKEN_CHECKER_FUNC_NAME = System.getenv().getOrDefault("TOKEN_CHECKER_FUNC_NAME", "LambdaTokenChecker");
+
+    static {
+        if (BUCKET_NAME == null) {
+            throw new RuntimeException("Missing required environment variable: BUCKET_NAME");
+        }
+    }
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent request, Context context) {
         // Note: OPTIONS preflight is handled by Function URL CORS configuration
         String requestBody = request.getBody();
-        
+
         context.getLogger().log("Raw request body: " + requestBody);
-        
+
         // Case-insensitive header lookup
         String acceptHeader = null;
         String contentTypeHeader = null;
         if (request.getHeaders() != null) {
             for (java.util.Map.Entry<String, String> h : request.getHeaders().entrySet()) {
-                if (h.getKey() == null) continue;
+                if (h.getKey() == null)
+                    continue;
                 String key = h.getKey();
                 if (key.equalsIgnoreCase("Accept")) {
                     acceptHeader = h.getValue();
@@ -57,19 +84,20 @@ public class LambdaGetObject implements RequestHandler<APIGatewayProxyRequestEve
                 }
             }
         }
-        
+
         context.getLogger().log("Accept header: " + acceptHeader);
         context.getLogger().log("Content-Type header: " + contentTypeHeader);
-        
+
         // Check query parameters for explicit format request
         String formatParam = null;
         if (request.getQueryStringParameters() != null) {
             formatParam = request.getQueryStringParameters().get("format");
         }
-        
+
         context.getLogger().log("Format parameter: " + formatParam);
-        
-        // If no body or empty body, choose between list and index based on query param or headers
+
+        // If no body or empty body, choose between list and index based on query param
+        // or headers
         if (requestBody == null || requestBody.trim().isEmpty() || requestBody.equals("{}")) {
             // Check for explicit format parameter first
             if ("json".equals(formatParam)) {
@@ -92,8 +120,9 @@ public class LambdaGetObject implements RequestHandler<APIGatewayProxyRequestEve
                 return getSpecificObject("index.html", context);
             }
         }
-        
-        // Check if the body is base64 encoded (API Gateway does this with binary_media_types)
+
+        // Check if the body is base64 encoded (API Gateway does this with
+        // binary_media_types)
         if (requestBody != null && !requestBody.startsWith("{")) {
             try {
                 // Decode base64
@@ -104,18 +133,38 @@ public class LambdaGetObject implements RequestHandler<APIGatewayProxyRequestEve
                 context.getLogger().log("Failed to decode base64: " + e.getMessage());
             }
         }
-        
+
         JSONObject bodyJSON = new JSONObject(requestBody);
-        
+
         // Safety check: ensure key exists
-        String key = "index.html"; 
+        String key = "index.html";
         if (bodyJSON.has("key")) {
-             key = bodyJSON.getString("key");
+            key = bodyJSON.getString("key");
+        }
+
+        // SECURITY: For non-index.html files, verify token using LambdaTokenChecker first
+        // But allow ANY authenticated user to download (no ownership check)
+        if (!key.equals("index.html")) {
+            String token = bodyJSON.optString("token", null);
+            String email = bodyJSON.optString("email", null);
+            
+            if (token == null || email == null) {
+                return createErrorResponse(403, "Missing token or email");
+            }
+
+            // Invoke LambdaTokenChecker to validate token
+            if (!validateTokenWithLambdaTokenChecker(email, token, context)) {
+                return createErrorResponse(403, "Invalid token");
+            }
+
+            // SECURITY: Allow ANY authenticated user to download (no ownership check)
+            // Only delete requires ownership verification
+            context.getLogger().log("Token verified for download: " + email + ", key: " + key);
         }
 
         return getSpecificObject(key, context);
     }
-    
+
     private APIGatewayProxyResponseEvent getSpecificObject(String key, Context context) {
         String mimeType = "application/octet-stream";
         String body = "";
@@ -138,10 +187,14 @@ public class LambdaGetObject implements RequestHandler<APIGatewayProxyRequestEve
                 String[] parts = key.split("\\.");
                 if (parts.length > 1) {
                     String ext = parts[parts.length - 1].toLowerCase();
-                    if (ext.equals("png")) mimeType = "image/png";
-                    else if (ext.equals("html")) mimeType = "text/html";
-                    else if (ext.equals("jpg") || ext.equals("jpeg")) mimeType = "image/jpeg";
-                    else if (ext.equals("txt")) mimeType = "text/plain";
+                    if (ext.equals("png"))
+                        mimeType = "image/png";
+                    else if (ext.equals("html"))
+                        mimeType = "text/html";
+                    else if (ext.equals("jpg") || ext.equals("jpeg"))
+                        mimeType = "image/jpeg";
+                    else if (ext.equals("txt"))
+                        mimeType = "text/plain";
                 }
 
                 // Get Object
@@ -153,7 +206,8 @@ public class LambdaGetObject implements RequestHandler<APIGatewayProxyRequestEve
                 try (ResponseInputStream<GetObjectResponse> s3Response = s3Client.getObject(s3Request)) {
                     byte[] buffer = s3Response.readAllBytes();
 
-                    // For HTML/text files return plain body (no base64) so browsers render correctly
+                    // For HTML/text files return plain body (no base64) so browsers render
+                    // correctly
                     if (mimeType.startsWith("text/html") || mimeType.startsWith("text/plain")) {
                         body = new String(buffer, StandardCharsets.UTF_8);
                         isBase64 = false;
@@ -179,41 +233,51 @@ public class LambdaGetObject implements RequestHandler<APIGatewayProxyRequestEve
         response.setStatusCode(statusCode);
         response.setBody(body);
         response.withIsBase64Encoded(isBase64);
-        
+
         // Note: CORS headers are handled by Function URL configuration
         java.util.Map<String, String> headers = new java.util.HashMap<>();
         headers.put("Content-Type", mimeType);
         response.setHeaders(headers);
-        
+
         return response;
     }
-    
+
     private APIGatewayProxyResponseEvent listObjects(Context context) {
         try {
             ListObjectsV2Request listRequest = ListObjectsV2Request.builder()
                     .bucket(BUCKET_NAME)
                     .build();
-            
+
             ListObjectsV2Response listResponse = s3Client.listObjectsV2(listRequest);
             List<S3Object> objects = listResponse.contents();
-            
+
             // Create JSON array for frontend
             List<JSONObject> objectList = new ArrayList<>();
             for (S3Object obj : objects) {
+                String key = obj.key();
+                
+                // Filter out index.html (frontend file) and test files
+                if (key.equals("index.html") || 
+                    key.startsWith("test") || 
+                    key.startsWith("warmup") ||
+                    key.equals("mqtt3.png")) {
+                    continue; // Skip these files
+                }
+                
                 JSONObject objJson = new JSONObject();
-                objJson.put("key", obj.key());
+                objJson.put("key", key);
                 objJson.put("size", obj.size());
                 objJson.put("lastModified", obj.lastModified().toString());
                 objectList.add(objJson);
             }
-            
+
             String jsonResponse = new org.json.JSONArray(objectList).toString();
-            
+
             APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
             response.setStatusCode(200);
             response.setBody(jsonResponse);
             response.withIsBase64Encoded(false);
-            
+
             // Set headers with CORS support
             java.util.Map<String, String> headers = new java.util.HashMap<>();
             headers.put("Content-Type", "application/json");
@@ -221,22 +285,173 @@ public class LambdaGetObject implements RequestHandler<APIGatewayProxyRequestEve
             headers.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
             headers.put("Access-Control-Allow-Headers", "Content-Type, Authorization");
             response.setHeaders(headers);
-            
+
             return response;
-            
+
         } catch (S3Exception e) {
             context.getLogger().log("S3 Error listing objects: " + e.getMessage());
             APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
             response.setStatusCode(500);
             response.setBody("[]");
             response.withIsBase64Encoded(false);
-            
+
             // Note: CORS headers are handled by Function URL configuration
             java.util.Map<String, String> headers = new java.util.HashMap<>();
             headers.put("Content-Type", "application/json");
             response.setHeaders(headers);
-            
+
             return response;
         }
+    }
+
+    // SECURITY: Validate token by getting SECRET_KEY from Parameter Store and comparing
+    private boolean validateTokenWithLambdaTokenChecker(String email, String token, Context context) {
+        LambdaLogger logger = context.getLogger();
+        
+        try {
+            // 1. Get SECRET_KEY from Parameter Store
+            String secretKey = getSecretKeyFromParameterStore(logger);
+            if (secretKey == null || secretKey.isEmpty()) {
+                logger.log("Failed to get SECRET_KEY from Parameter Store");
+                return false;
+            }
+
+            // 2. Generate token from email + SECRET_KEY
+            String generatedToken = generateSecureToken(email, secretKey, logger);
+            if (generatedToken == null) {
+                logger.log("Failed to generate token");
+                return false;
+            }
+
+            // 3. Compare generated token with provided token
+            boolean isValid = generatedToken.equals(token);
+            logger.log("Token validation result for email " + email + ": " + isValid);
+
+            return isValid;
+
+        } catch (Exception e) {
+            logger.log("Error validating token: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // Get SECRET_KEY from SSM Parameter Store using Lambda Extension
+    private String getSecretKeyFromParameterStore(LambdaLogger logger) {
+        try {
+            // 1. Build HTTP client
+            HttpClient client = HttpClient.newBuilder()
+                    .version(HttpClient.Version.HTTP_1_1)
+                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .connectTimeout(Duration.ofSeconds(10))
+                    .build();
+
+            // 2. Get session token for authentication
+            String sessionToken = System.getenv("AWS_SESSION_TOKEN");
+
+            // 3. Create request to SSM Parameter Store Extension
+            HttpRequest requestParameter = HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:2773/systemsmanager/parameters/get/?name=minhtri16122004&withDecryption=true"))
+                    .header("Accept", "application/json")
+                    .header("X-Aws-Parameters-Secrets-Token", sessionToken != null ? sessionToken : "")
+                    .GET()
+                    .build();
+
+            // 4. Send request and get response
+            HttpResponse<String> responseParameter = client.send(requestParameter, HttpResponse.BodyHandlers.ofString());
+
+            // 5. Process the response
+            String jsonResponse = responseParameter.body();
+            JSONObject jsonBody = new JSONObject(jsonResponse);
+            JSONObject parameter = jsonBody.getJSONObject("Parameter");
+            String key = parameter.getString("Value");
+
+            logger.log("My secret key: " + key);
+            return key;
+
+        } catch (Exception e) {
+            logger.log("Error retrieving SECRET_KEY from Parameter Store: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    // Generate secure token from email using HMAC-SHA256
+    private String generateSecureToken(String email, String secretKey, LambdaLogger logger) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKeySpec = new SecretKeySpec(
+                    secretKey.getBytes(StandardCharsets.UTF_8),
+                    "HmacSHA256"
+            );
+            mac.init(secretKeySpec);
+            byte[] hmacBytes = mac.doFinal(email.getBytes(StandardCharsets.UTF_8));
+            String base64 = Base64.getEncoder().encodeToString(hmacBytes);
+            return base64;
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            logger.log("Error generating token: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // SECURITY: Verify that photo belongs to the authenticated user
+    private boolean verifyPhotoOwnership(String key, String email, Context context) {
+        try {
+            String rdsHostname = System.getenv("RDS_HOSTNAME");
+            String rdsPort = System.getenv("RDS_PORT");
+            String dbUser = System.getenv("DB_USER");
+            String dbPassword = System.getenv("DB_PASSWORD");
+            String dbName = System.getenv("DB_NAME");
+
+            if (rdsHostname == null || rdsPort == null || dbUser == null || dbPassword == null || dbName == null) {
+                context.getLogger().log("Missing RDS environment variables");
+                return false;
+            }
+
+            String jdbcUrl = "jdbc:mysql://" + rdsHostname + ":" + rdsPort + "/" + dbName;
+            java.util.Properties props = new java.util.Properties();
+            props.setProperty("useSSL", "true");
+            props.setProperty("user", dbUser);
+            props.setProperty("password", dbPassword);
+
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            try (java.sql.Connection connection = java.sql.DriverManager.getConnection(jdbcUrl, props)) {
+                String sql = "SELECT COUNT(*) as count FROM Photos WHERE S3Key = ? AND Email = ?";
+                try (java.sql.PreparedStatement st = connection.prepareStatement(sql)) {
+                    st.setString(1, key);
+                    st.setString(2, email);
+                    try (java.sql.ResultSet rs = st.executeQuery()) {
+                        if (rs.next() && rs.getInt("count") > 0) {
+                            return true;
+                        } else {
+                            context.getLogger().log("Photo " + key + " does not belong to " + email);
+                            return false;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            context.getLogger().log("Error verifying ownership: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private APIGatewayProxyResponseEvent createErrorResponse(int statusCode, String message) {
+        JSONObject error = new JSONObject();
+        error.put("error", message);
+        
+        APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
+        response.setStatusCode(statusCode);
+        response.setBody(error.toString());
+        
+        java.util.Map<String, String> headers = new java.util.HashMap<>();
+        headers.put("Content-Type", "application/json");
+        headers.put("Access-Control-Allow-Origin", "*");
+        headers.put("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        headers.put("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        response.setHeaders(headers);
+        response.setIsBase64Encoded(false);
+        
+        return response;
     }
 }

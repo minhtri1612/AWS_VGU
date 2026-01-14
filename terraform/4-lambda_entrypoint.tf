@@ -10,17 +10,18 @@ resource "aws_lambda_function" "entry_point" {
 
   environment {
     variables = {
-      DELETE_FUNC_NAME      = aws_lambda_function.delete_objects.function_name
-      GET_FUNC_NAME         = aws_lambda_function.get_objects.function_name
-      UPLOAD_FUNC_NAME      = aws_lambda_function.upload_objects.function_name
-      LIST_FUNC_NAME        = aws_lambda_function.get_list_of_objects.function_name
-      GET_RESIZED_FUNC_NAME = aws_lambda_function.get_resized_image.function_name
+      DELETE_FUNC_NAME        = aws_lambda_function.orchestrate_delete_handler.function_name
+      GET_FUNC_NAME           = aws_lambda_function.get_objects.function_name
+      UPLOAD_FUNC_NAME        = aws_lambda_function.orchestrate_upload.function_name
+      LIST_FUNC_NAME          = aws_lambda_function.get_list_of_objects.function_name
+      GET_RESIZED_FUNC_NAME   = aws_lambda_function.get_resized_image.function_name
       GET_PHOTOS_DB_FUNC_NAME = aws_lambda_function.get_photos_db.function_name
-      ADD_PHOTO_DB_FUNC_NAME = aws_lambda_function.add_photo_db.function_name
+      ADD_PHOTO_DB_FUNC_NAME  = aws_lambda_function.add_photo_db.function_name
     }
   }
 
   depends_on = [
-    aws_lambda_function.get_resized_image
+    aws_lambda_function.get_resized_image,
+    aws_lambda_function.orchestrate_delete_handler
   ]
 }

@@ -52,3 +52,11 @@ variable "db_password" {
   type        = string
   sensitive   = true
 }
+
+variable "secret_key" {
+  description = "Secret key for HMAC token generation"
+  type        = string
+  sensitive   = true
+  default     = "CHANGE_ME_SECRET_KEY_FOR_HMAC"
+}
+

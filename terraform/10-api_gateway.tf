@@ -68,6 +68,8 @@ resource "aws_api_gateway_deployment" "main" {
     aws_api_gateway_integration.options_root,
     aws_api_gateway_integration.orchestrator,
     aws_api_gateway_integration.orchestrator_options,
+    aws_api_gateway_integration.auth,
+    aws_api_gateway_integration.auth_options,
   ]
 
   # In the new version, we move 'stage_name' to a separate resource or ignore it here.
@@ -77,7 +79,9 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_resource.proxy.id,
       aws_api_gateway_method.proxy.id,
       aws_api_gateway_integration.lambda.id,
-      aws_api_gateway_rest_api.main.binary_media_types # <--- This watches for the Binary setting!
+      aws_api_gateway_rest_api.main.binary_media_types,
+      aws_api_gateway_resource.auth.id,
+      aws_api_gateway_integration.auth.id
     ]))
   }
 
@@ -159,6 +163,50 @@ resource "aws_lambda_permission" "api_gateway" {
   function_name = aws_lambda_function.entry_point.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+# API Gateway Resource for auth (token generation)
+resource "aws_api_gateway_resource" "auth" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+  path_part   = "auth"
+}
+
+# API Gateway Method for auth
+resource "aws_api_gateway_method" "auth" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.auth.id
+  http_method   = "POST"
+  authorization = "NONE"
+}
+
+# OPTIONS method for auth (CORS preflight)
+resource "aws_api_gateway_method" "auth_options" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.auth.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "auth_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.auth.id
+  http_method = aws_api_gateway_method.auth_options.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.generate_token.invoke_arn
+}
+
+# API Gateway Integration with Generate Token Lambda
+resource "aws_api_gateway_integration" "auth" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.auth.id
+  http_method = aws_api_gateway_method.auth.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.generate_token.invoke_arn
 }
 
 # Enable CORS for API Gateway - Proxy path
