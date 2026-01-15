@@ -82,8 +82,10 @@ public class LambdaResize implements RequestHandler<S3Event, String> {
             // Resize
             BufferedImage srcImage = ImageIO.read(s3Object);
             if (srcImage == null) {
-                logger.log("Could not read image: " + srcKey);
-                return "Error";
+                String errorMsg = "Could not read image: " + srcKey
+                        + " - File may be corrupted or invalid image format";
+                logger.log(errorMsg);
+                throw new RuntimeException(errorMsg);
             }
             BufferedImage newImage = resizeImage(srcImage);
 
