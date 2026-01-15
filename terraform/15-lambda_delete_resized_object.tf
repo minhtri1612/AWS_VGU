@@ -16,19 +16,9 @@ resource "aws_lambda_function" "delete_resized_object" {
   }
 }
 
-# S3 bucket notification to trigger Lambda when objects are deleted from source bucket
-resource "aws_s3_bucket_notification" "source_bucket_delete_notification" {
-  bucket = aws_s3_bucket.source_bucket.id
+# NOTE: S3 bucket notification is now defined in 2-s3.tf (merged with resize notification)
+# This is because S3 only allows ONE notification configuration per bucket
 
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.delete_resized_object.arn
-    events              = ["s3:ObjectRemoved:*"]
-    filter_prefix       = ""
-    filter_suffix       = ""
-  }
-
-  depends_on = [aws_lambda_permission.allow_s3_invoke_delete_resized]
-}
 
 # Lambda permission for S3 to invoke delete resized function
 resource "aws_lambda_permission" "allow_s3_invoke_delete_resized" {

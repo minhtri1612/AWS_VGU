@@ -71,7 +71,8 @@ public class LambdaResize implements RequestHandler<S3Event, String> {
                 return "";
             }
             String imageType = matcher.group(1).toLowerCase();
-            if (!(JPG_TYPE.equals(imageType)) && !(PNG_TYPE.equals(imageType))) {
+            // Support both .jpg and .jpeg extensions
+            if (!(JPG_TYPE.equals(imageType)) && !("jpeg".equals(imageType)) && !(PNG_TYPE.equals(imageType))) {
                 logger.log("Skipping non-image " + srcKey);
                 return "";
             }
@@ -90,8 +91,10 @@ public class LambdaResize implements RequestHandler<S3Event, String> {
             BufferedImage newImage = resizeImage(srcImage);
 
             // Re-encode
+            // Normalize "jpeg" to "jpg" for ImageIO.write() compatibility
+            String outputFormat = imageType.equals("jpeg") ? "jpg" : imageType;
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            ImageIO.write(newImage, imageType, outputStream);
+            ImageIO.write(newImage, outputFormat, outputStream);
 
             // Upload to DESTINATION Bucket
             try {
