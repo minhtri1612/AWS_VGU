@@ -1,11 +1,11 @@
-# Amplify app - Create without repository, connect manually via Console
-# Due to GitHub token authentication issues with Terraform, we'll connect the repo manually
+# Amplify app with GitHub auto-deployment
 resource "aws_amplify_app" "my_app" {
   name                 = "AWS_clavelier_${var.environment}"
+  repository           = var.github_repo
+  access_token         = var.github_token
   iam_service_role_arn = aws_iam_role.amplify_service_role.arn
-  # repository and access_token removed - connect via AWS Console instead
 
-  # Optional auto-branch
+  # Auto-build on every commit
   auto_branch_creation_config {
     enable_auto_build = true
   }

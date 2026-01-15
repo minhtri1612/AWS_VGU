@@ -60,3 +60,13 @@ variable "secret_key" {
   default     = "CHANGE_ME_SECRET_KEY_FOR_HMAC"
 }
 
+variable "github_token" {
+  description = "GitHub personal access token for Amplify"
+  type        = string
+  sensitive   = true
+}
+
+variable "github_repo" {
+  description = "GitHub repository URL"
+  type        = string
+}
