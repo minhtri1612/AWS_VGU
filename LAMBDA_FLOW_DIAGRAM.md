@@ -5,13 +5,14 @@
 ```
 Frontend (index.html)
     ↓
-API Gateway (/auth, /orchestrator, /{proxy+})
+API Gateway (/auth, /orchestrator, /delete-orchestrator, /{proxy+})
     ↓
 ┌─────────────────────────────────────────────────────────┐
 │  LAYER 1: ENTRY POINTS                                  │
 │  - LambdaEntryPoint (router chính)                     │
 │  - LambdaGenerateToken (/auth endpoint)                │
 │  - LambdaOrchestrateUploadHandler (/orchestrator)       │
+│  - LambdaOrchestrateDeleteHandler (/delete-orchestrator)│
 └─────────────────────────────────────────────────────────┘
     ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -52,8 +53,7 @@ API Gateway (/auth, /orchestrator, /{proxy+})
   API Gateway → LambdaEntryPoint → Phân tích action → Route đến Lambda phù hợp
   ```
 - **Routing logic**:
-  - `DELETE` → LambdaOrchestrateDeleteHandler
-  - `upload` → LambdaOrchestrateUploadHandler
+  - `upload` → LambdaOrchestrateUploadHandler (legacy route - prefer direct /orchestrator)
   - `list` → LambdaGetListOfObjects
   - `get_resized` → LambdaGetResizedImage
   - `get_photos_db` → LambdaGetPhotosDB
@@ -90,12 +90,12 @@ API Gateway (/auth, /orchestrator, /{proxy+})
 
 ### 🟢 LAYER 2: ORCHESTRATORS
 
-#### 4. **LambdaOrchestrateDeleteHandler** 🗑️
+#### 4. **LambdaOrchestrateDeleteHandler** 🗑️ (DELETE ORCHESTRATOR)
 - **Vai trò**: Điều phối xóa file (parallel: S3 original + DB + S3 resized)
-- **Khi nào xuất hiện**: Khi user delete file
+- **Khi nào xuất hiện**: Khi user delete file (frontend gọi `/delete-orchestrator`)
 - **Flow**:
   ```
-  LambdaEntryPoint → LambdaOrchestrateDeleteHandler
+  Frontend → API Gateway /delete-orchestrator → LambdaOrchestrateDeleteHandler
     ↓
   Parallel execution:
   ├─ Delete từ S3 original bucket
@@ -296,9 +296,7 @@ Return file content (base64)
 ```
 Frontend click "Delete" button
     ↓
-DELETE /?key=xxx (API Gateway)
-    ↓
-LambdaEntryPoint (detect action = "delete")
+DELETE /delete-orchestrator (API Gateway)
     ↓
 LambdaOrchestrateDeleteHandler
     ↓ Verify token
@@ -339,7 +337,7 @@ Return valid/invalid
 ## 🔗 KẾT NỐI GIỮA CÁC LAMBDA
 
 ### Direct Invocation (Lambda → Lambda)
-- LambdaEntryPoint → Tất cả Lambda khác (trừ GenerateToken và OrchestrateUploadHandler)
+- LambdaEntryPoint → Các worker Lambda (GET operations, legacy routes)
 - LambdaOrchestrateUploadHandler → Step Functions → LambdaAddPhotoDB, LambdaUploadObjects, LambdaResizeWrapper
 - LambdaResizeWrapper → LambdaResize
 
@@ -353,22 +351,24 @@ Return valid/invalid
 - S3 Upload → LambdaResize (optional, có thể được trigger tự động)
 
 ### API Gateway Routes
-- `/auth` → LambdaGenerateToken
-- `/orchestrator` → LambdaOrchestrateUploadHandler
-- `/{proxy+}` → LambdaEntryPoint → Route đến Lambda phù hợp
+- `/auth` → LambdaGenerateToken (POST - token generation/verification)
+- `/orchestrator` → LambdaOrchestrateUploadHandler (POST - upload workflow)
+- `/delete-orchestrator` → LambdaOrchestrateDeleteHandler (DELETE - delete workflow)
+- `/{proxy+}` → LambdaEntryPoint → Route đến Lambda phù hợp (legacy/GET operations)
 
 ## 📊 THỨ TỰ XUẤT HIỆN
 
-1. **Đầu tiên**: LambdaEntryPoint, LambdaGenerateToken, LambdaOrchestrateUploadHandler (Entry Points)
-2. **Tiếp theo**: LambdaOrchestrateDeleteHandler (Orchestrator)
+1. **Đầu tiên**: LambdaEntryPoint, LambdaGenerateToken, LambdaOrchestrateUploadHandler, LambdaOrchestrateDeleteHandler (Entry Points & Orchestrators)
 3. **Sau đó**: Các Worker Functions (LambdaAddPhotoDB, LambdaGetPhotosDB, etc.)
 4. **Cuối cùng**: Support Services (LambdaTokenChecker, LambdaResize)
 
 ## 🎯 TÓM TẮT
 
-- **Entry Points**: LambdaEntryPoint, LambdaGenerateToken, LambdaOrchestrateUploadHandler
-- **Orchestrators**: LambdaOrchestrateUploadHandler, LambdaOrchestrateDeleteHandler
+- **Entry Points**: LambdaEntryPoint (router), LambdaGenerateToken (/auth), LambdaOrchestrateUploadHandler (/orchestrator), LambdaOrchestrateDeleteHandler (/delete-orchestrator)
+- **Orchestrators**: LambdaOrchestrateUploadHandler (sequential upload), LambdaOrchestrateDeleteHandler (parallel delete)
 - **Workers**: LambdaAddPhotoDB, LambdaGetPhotosDB, LambdaUploadObjects, LambdaResizeWrapper, LambdaGetObjects, LambdaGetResizedImage, LambdaDeleteObjects, LambdaDeleteResizedObject, LambdaGetListOfObjects
 - **Support**: LambdaTokenChecker (có thể unused), LambdaResize
+
+
 
 

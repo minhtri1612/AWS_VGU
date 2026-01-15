@@ -35,14 +35,15 @@ resource "aws_cloudwatch_log_group" "orchestrate_delete_handler_logs" {
   retention_in_days = 14
 }
 
-# Lambda Permission for API Gateway to invoke Orchestrate Delete Handler
-resource "aws_lambda_permission" "api_gateway_orchestrate_delete_handler" {
-  statement_id  = "AllowAPIGatewayInvokeOrchestrateDeleteHandler"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.orchestrate_delete_handler.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
-}
+# NOTE: Lambda Permission moved to 10-api_gateway.tf 
+# with the new dedicated /delete-orchestrator route
+# resource "aws_lambda_permission" "api_gateway_orchestrate_delete_handler" {
+#   statement_id  = "AllowAPIGatewayInvokeOrchestrateDeleteHandler"
+#   action        = "lambda:InvokeFunction"
+#   function_name = aws_lambda_function.orchestrate_delete_handler.function_name
+#   principal     = "apigateway.amazonaws.com"
+#   source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+# }
 
 
 

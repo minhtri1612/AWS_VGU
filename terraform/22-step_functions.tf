@@ -407,13 +407,14 @@ resource "aws_iam_role_policy" "eventbridge_start_step_functions" {
 }
 
 # Pattern 2: EventBridge Rule - Schedule Step Functions (Warm-up)
+# DISABLED: Warmup creates fake files in S3/DB - not needed
 # This runs Step Functions every 5 minutes to keep it warm
 resource "aws_cloudwatch_event_rule" "warmup_step_functions" {
   name                = "${var.project_name}-warmup-step-functions"
   description         = "Warm up Step Functions state machine to reduce cold starts"
   schedule_expression = "rate(5 minutes)"
   
-  state = "ENABLED"
+  state = "DISABLED"  # Disabled to prevent creating warmup-test.jpg files
 }
 
 resource "aws_cloudwatch_event_target" "warmup_step_functions" {

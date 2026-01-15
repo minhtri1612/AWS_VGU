@@ -68,6 +68,8 @@ resource "aws_api_gateway_deployment" "main" {
     aws_api_gateway_integration.options_root,
     aws_api_gateway_integration.orchestrator,
     aws_api_gateway_integration.orchestrator_options,
+    aws_api_gateway_integration.delete_orchestrator,
+    aws_api_gateway_integration.delete_orchestrator_options,
     aws_api_gateway_integration.auth,
     aws_api_gateway_integration.auth_options,
   ]
@@ -81,7 +83,10 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.lambda.id,
       aws_api_gateway_rest_api.main.binary_media_types,
       aws_api_gateway_resource.auth.id,
-      aws_api_gateway_integration.auth.id
+      aws_api_gateway_integration.auth.id,
+      aws_api_gateway_resource.delete_orchestrator.id,
+      aws_api_gateway_integration.delete_orchestrator.id,
+      aws_api_gateway_integration.delete_orchestrator_options.id,
     ]))
   }
 
@@ -161,6 +166,64 @@ resource "aws_lambda_permission" "api_gateway" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.entry_point.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+# ========================================
+# Delete Orchestrator Route Configuration
+# ========================================
+
+# API Gateway Resource for delete-orchestrator
+resource "aws_api_gateway_resource" "delete_orchestrator" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+  path_part   = "delete-orchestrator"
+}
+
+# API Gateway Method DELETE for delete-orchestrator
+resource "aws_api_gateway_method" "delete_orchestrator" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.delete_orchestrator.id
+  http_method   = "DELETE"
+  authorization = "NONE"
+}
+
+# OPTIONS method for delete-orchestrator (CORS preflight)
+resource "aws_api_gateway_method" "delete_orchestrator_options" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.delete_orchestrator.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+# OPTIONS method integration - Let Lambda handle (like auth route)
+resource "aws_api_gateway_integration" "delete_orchestrator_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.delete_orchestrator.id
+  http_method = aws_api_gateway_method.delete_orchestrator_options.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.orchestrate_delete_handler.invoke_arn
+}
+
+# API Gateway Integration with Delete Orchestrator Lambda
+resource "aws_api_gateway_integration" "delete_orchestrator" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.delete_orchestrator.id
+  http_method = aws_api_gateway_method.delete_orchestrator.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.orchestrate_delete_handler.invoke_arn
+}
+
+# Lambda permission for API Gateway to invoke Delete Orchestrator
+resource "aws_lambda_permission" "api_gateway_delete_orchestrator" {
+  statement_id  = "AllowAPIGatewayInvokeDeleteOrchestrator"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.orchestrate_delete_handler.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
 }
