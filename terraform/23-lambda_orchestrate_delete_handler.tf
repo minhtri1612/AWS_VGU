@@ -11,14 +11,16 @@ resource "aws_lambda_function" "orchestrate_delete_handler" {
 
   environment {
     variables = {
-      BUCKET_NAME         = aws_s3_bucket.source_bucket.id
-      RESIZED_BUCKET_NAME = aws_s3_bucket.resized_bucket.id
-      RDS_HOSTNAME        = module.database.rds_instance_address
-      RDS_PORT            = tostring(module.database.rds_instance_port)
-      DB_USER             = "admin"
-      DB_PASSWORD         = var.db_password
-      DB_NAME             = "Cloud26"
-      # SECRET_KEY removed - now retrieved from Parameter Store via HTTP
+      # Worker Lambda function names
+      DELETE_FROM_S3_FUNC = aws_lambda_function.delete_objects.function_name
+      DELETE_FROM_DB_FUNC = aws_lambda_function.delete_objects.function_name
+      DELETE_RESIZED_FUNC = aws_lambda_function.delete_resized_object.function_name
+      # RDS config for ownership verification
+      RDS_HOSTNAME = module.database.rds_instance_address
+      RDS_PORT     = tostring(module.database.rds_instance_port)
+      DB_USER      = "admin"
+      DB_PASSWORD  = var.db_password
+      DB_NAME      = "Cloud26"
     }
   }
 

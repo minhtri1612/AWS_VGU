@@ -3,7 +3,7 @@ resource "aws_lambda_function" "delete_resized_object" {
   filename         = "${path.module}/../LambdaDeleteResizedObject/target/LambdaDeleteResizedObject-1.0-SNAPSHOT.jar"
   function_name    = "LambdaDeleteResizedObject"
   role             = aws_iam_role.lambda_role.arn
-  handler          = "vgu.cloud26.LambdaDeleteResizedObject::handleRequest"
+  handler          = "vgu.cloud26.LambdaDeleteResized::handleRequest"
   source_code_hash = filebase64sha256("${path.module}/../LambdaDeleteResizedObject/target/LambdaDeleteResizedObject-1.0-SNAPSHOT.jar")
   runtime          = var.lambda_runtime
   timeout          = var.lambda_timeout
