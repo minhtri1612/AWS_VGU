@@ -99,11 +99,11 @@ public class LambdaDeleteObjects implements RequestHandler<APIGatewayProxyReques
             return createResponse(400, new JSONObject().put("error", "Missing 'key' or 'keys' field").toString());
         }
 
-        // SECURITY: Verify token and get email
-        String token = bodyJSON.optString("token", null);
-        String email = verifyTokenAndGetEmail(token, context);
-        if (email == null) {
-            return createResponse(403, new JSONObject().put("error", "Invalid or expired token").toString());
+        // NOTE: Token verification done by orchestrator
+        // Worker Lambda trusts orchestrator, only verifies ownership
+        String email = bodyJSON.optString("email", null);
+        if (email == null || email.isEmpty()) {
+            return createResponse(400, new JSONObject().put("error", "Missing 'email' field").toString());
         }
 
         // SECURITY: Verify ownership
@@ -245,54 +245,6 @@ public class LambdaDeleteObjects implements RequestHandler<APIGatewayProxyReques
                 int rowsDeleted = st.executeUpdate();
                 context.getLogger().log("Database batch delete result: " + rowsDeleted + " row(s) deleted");
             }
-        }
-    }
-
-    // SECURITY: Verify token and get email from database
-    private String verifyTokenAndGetEmail(String token, Context context) {
-        if (token == null || token.isEmpty()) {
-            context.getLogger().log("No token provided");
-            return null;
-        }
-
-        try {
-            String rdsHostname = System.getenv("RDS_HOSTNAME");
-            String rdsPort = System.getenv("RDS_PORT");
-            String dbUser = System.getenv("DB_USER");
-            String dbPassword = System.getenv("DB_PASSWORD");
-            String dbName = System.getenv("DB_NAME");
-
-            if (rdsHostname == null || rdsPort == null || dbUser == null || dbPassword == null || dbName == null) {
-                context.getLogger().log("Missing RDS environment variables");
-                return null;
-            }
-
-            String jdbcUrl = "jdbc:mysql://" + rdsHostname + ":" + rdsPort + "/" + dbName;
-            java.util.Properties props = new java.util.Properties();
-            props.setProperty("useSSL", "true");
-            props.setProperty("user", dbUser);
-            props.setProperty("password", dbPassword);
-
-            Class.forName("com.mysql.cj.jdbc.Driver");
-            try (java.sql.Connection connection = java.sql.DriverManager.getConnection(jdbcUrl, props)) {
-                String sql = "SELECT Email FROM Tokens WHERE Token = ? AND ExpiresAt > NOW()";
-                try (java.sql.PreparedStatement st = connection.prepareStatement(sql)) {
-                    st.setString(1, token);
-                    try (java.sql.ResultSet rs = st.executeQuery()) {
-                        if (rs.next()) {
-                            String email = rs.getString("Email");
-                            context.getLogger().log("Token verified, email: " + email);
-                            return email;
-                        } else {
-                            context.getLogger().log("Invalid or expired token");
-                            return null;
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            context.getLogger().log("Error verifying token: " + e.getMessage());
-            return null;
         }
     }
 

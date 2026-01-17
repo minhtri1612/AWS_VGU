@@ -95,26 +95,38 @@ public class LambdaEntryPoint implements
             return response;
         }
 
-        // 3. LOGIC: Determine action based on HTTP method and content
+        // 3. LOGIC: Determine action - query string has PRIORITY over HTTP method
         String action = "get"; // default
+        boolean queryStringMatched = false;
         
-        if (event.getQueryStringParameters() != null && event.getQueryStringParameters().containsKey("action")) {
-            action = event.getQueryStringParameters().get("action");
-        } else if (event.getQueryStringParameters() != null && event.getQueryStringParameters().containsKey("format")) {
-            String format = event.getQueryStringParameters().get("format");
-            if (format.equals("json")) {
-                action = "list"; // Handle ?format=json as list action
-            } else if (format.equals("resized")) {
-                action = "get_resized"; // Handle ?format=resized as get resized image action
-            } else if (format.equals("photos") || format.equals("db")) {
-                action = "get_photos_db"; // Handle ?format=photos or ?format=db as get photos from DB
+        // PRIORITY 1: Check query string parameters FIRST (before HTTP method)
+        if (event.getQueryStringParameters() != null) {
+            if (event.getQueryStringParameters().containsKey("action")) {
+                action = event.getQueryStringParameters().get("action");
+                queryStringMatched = true;
+            } else if (event.getQueryStringParameters().containsKey("format")) {
+                String format = event.getQueryStringParameters().get("format");
+                if (format.equals("json")) {
+                    action = "list";
+                    queryStringMatched = true;
+                } else if (format.equals("resized")) {
+                    action = "get_resized"; // Handle ?format=resized regardless of HTTP method
+                    queryStringMatched = true;
+                } else if (format.equals("photos") || format.equals("db")) {
+                    action = "get_photos_db";
+                    queryStringMatched = true;
+                }
+            } else if (event.getQueryStringParameters().containsKey("resized")) {
+                action = "get_resized";
+                queryStringMatched = true;
+            } else if (event.getQueryStringParameters().containsKey("photos")) {
+                action = "get_photos_db";
+                queryStringMatched = true;
             }
-        } else if (event.getQueryStringParameters() != null && event.getQueryStringParameters().containsKey("resized")) {
-            action = "get_resized"; // Handle ?resized=true as get resized image action
-        } else if (event.getQueryStringParameters() != null && event.getQueryStringParameters().containsKey("photos")) {
-            action = "get_photos_db"; // Handle ?photos=true as get photos from DB
-        } else {
-            // Route based on HTTP method if no action query parameter
+        }
+        
+        // PRIORITY 2: If no query string matched, use HTTP method
+        if (!queryStringMatched) {
             switch (httpMethod.toUpperCase()) {
                 case "POST":
                     action = "upload";
@@ -123,7 +135,7 @@ public class LambdaEntryPoint implements
                     action = "delete";
                     break;
                 case "PUT":
-                    action = "get"; // Your frontend uses PUT for downloads
+                    action = "get";
                     break;
                 case "GET":
                 default:

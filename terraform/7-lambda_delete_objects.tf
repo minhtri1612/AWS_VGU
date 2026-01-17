@@ -13,6 +13,11 @@ resource "aws_lambda_function" "delete_objects" {
     variables = {
       BUCKET_NAME         = aws_s3_bucket.source_bucket.id
       RESIZED_BUCKET_NAME = aws_s3_bucket.resized_bucket.id
+      RDS_HOSTNAME        = module.database.rds_instance_address
+      RDS_PORT            = tostring(module.database.rds_instance_port)
+      DB_USER             = "admin"
+      DB_PASSWORD         = var.db_password
+      DB_NAME             = "Cloud26"
     }
   }
 }

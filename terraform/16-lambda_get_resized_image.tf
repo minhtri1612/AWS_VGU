@@ -12,6 +12,7 @@ resource "aws_lambda_function" "get_resized_image" {
   environment {
     variables = {
       RESIZED_BUCKET_NAME = aws_s3_bucket.resized_bucket.id
+      SOURCE_BUCKET_NAME  = aws_s3_bucket.source_bucket.id
     }
   }
 }

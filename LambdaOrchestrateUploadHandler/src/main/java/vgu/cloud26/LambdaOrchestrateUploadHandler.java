@@ -174,7 +174,7 @@ public class LambdaOrchestrateUploadHandler
       try {
         JSONObject bodyJSON = new JSONObject(userRequestBody != null ? userRequestBody : "{}");
         token = bodyJSON.optString("token", null);
-        email = bodyJSON.optString("email", null); // Frontend should send email too
+        email = bodyJSON.optString("email", null);
       } catch (Exception e) {
         logger.log("Error parsing request body: " + e.getMessage());
       }
@@ -186,11 +186,6 @@ public class LambdaOrchestrateUploadHandler
 
       if (!verifyTokenWithHash(email, token, logger)) {
         return createErrorResponse(403, "Invalid token");
-      }
-      if (email == null) {
-        JSONObject errorResult = new JSONObject();
-        errorResult.put("error", "Invalid or expired token");
-        return createErrorResponse(403, errorResult.toString());
       }
 
       logger.log("Token verified, email from token: " + email);

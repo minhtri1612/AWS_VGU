@@ -48,6 +48,13 @@
             <version>20240303</version>
         </dependency>
 
+        <!-- MySQL JDBC Driver -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>8.0.33</version>
+        </dependency>
+
         <!-- Optional: JUnit for testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>

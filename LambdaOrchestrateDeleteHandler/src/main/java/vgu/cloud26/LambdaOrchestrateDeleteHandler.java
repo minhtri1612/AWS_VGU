@@ -16,9 +16,6 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.json.JSONObject;
@@ -42,15 +39,13 @@ public class LambdaOrchestrateDeleteHandler
 
   private final LambdaClient lambdaClient;
   private final SsmClient ssmClient;
-  private final ExecutorService executorService;
 
   // Worker Lambda function names from environment variables
-  private static final String DELETE_FROM_S3_FUNC = System.getenv()
-      .getOrDefault("DELETE_FROM_S3_FUNC", "LambdaDeleteFromS3");
-  private static final String DELETE_FROM_DB_FUNC = System.getenv()
-      .getOrDefault("DELETE_FROM_DB_FUNC", "LambdaDeleteFromDB");
+  // LambdaDeleteObjects handles both S3 and DB deletion, so we only need to call it once
+  private static final String DELETE_OBJECTS_FUNC = System.getenv()
+      .getOrDefault("DELETE_OBJECTS_FUNC", "LambdaDeleteObjects");
   private static final String DELETE_RESIZED_FUNC = System.getenv()
-      .getOrDefault("DELETE_RESIZED_FUNC", "LambdaDeleteResized");
+      .getOrDefault("DELETE_RESIZED_FUNC", "LambdaDeleteResizedObject");
 
   // Database config for ownership verification
   private static final String RDS_HOSTNAME = System.getenv("RDS_HOSTNAME");
@@ -69,7 +64,6 @@ public class LambdaOrchestrateDeleteHandler
   public LambdaOrchestrateDeleteHandler() {
     this.lambdaClient = LambdaClient.builder().region(Region.AP_SOUTHEAST_2).build();
     this.ssmClient = SsmClient.builder().region(Region.AP_SOUTHEAST_2).build();
-    this.executorService = Executors.newFixedThreadPool(3); // For 3 parallel workers
   }
 
   @Override
@@ -141,20 +135,35 @@ public class LambdaOrchestrateDeleteHandler
       String email = bodyJSON.optString("email", null);
 
       if (token == null || token.isEmpty() || email == null || email.isEmpty()) {
+        logger.log("Missing token or email - token: " + (token != null ? "present" : "null") + ", email: " + (email != null ? "present" : "null"));
         return createErrorResponse(corsHeaders, 403, "Missing token or email");
       }
 
-      if (!verifyTokenWithHash(email, token, logger)) {
-        return createErrorResponse(corsHeaders, 403, "Invalid token");
+      try {
+        if (!verifyTokenWithHash(email, token, logger)) {
+          logger.log("Token verification failed for email: " + email);
+          return createErrorResponse(corsHeaders, 403, "Invalid token");
+        }
+      } catch (Exception e) {
+        logger.log("Exception during token verification: " + e.getMessage());
+        e.printStackTrace();
+        return createErrorResponse(corsHeaders, 500, "Token verification error: " + e.getMessage());
       }
 
-      if (!verifyPhotoOwnership(key, email, logger)) {
-        return createErrorResponse(corsHeaders, 403, "You don't have permission to delete this photo");
+      try {
+        if (!verifyPhotoOwnership(key, email, logger)) {
+          logger.log("Ownership verification failed - key: " + key + ", email: " + email);
+          return createErrorResponse(corsHeaders, 403, "You don't have permission to delete this photo");
+        }
+      } catch (Exception e) {
+        logger.log("Exception during ownership verification: " + e.getMessage());
+        e.printStackTrace();
+        return createErrorResponse(corsHeaders, 500, "Ownership verification error: " + e.getMessage());
       }
 
-      logger.log("Starting PARALLEL delete workflow for key: " + key);
+      logger.log("Starting delete workflow for key: " + key);
 
-      // Prepare payload for worker Lambdas
+      // Prepare payload for worker Lambdas (same format as upload orchestrator)
       JSONObject lambdaEvent = new JSONObject();
       lambdaEvent.put("httpMethod", "DELETE");
       lambdaEvent.put("body", userRequestBody != null ? userRequestBody : "{}");
@@ -163,41 +172,34 @@ public class LambdaOrchestrateDeleteHandler
       lambdaEvent.put("headers", eventHeaders);
       String workerPayload = lambdaEvent.toString();
 
-      // Execute 3 delete workers in PARALLEL
-      CompletableFuture<String> deleteS3Future = CompletableFuture.supplyAsync(() -> {
-        logger.log("Activity 1: Invoking LambdaDeleteFromS3");
-        return callLambda(DELETE_FROM_S3_FUNC, workerPayload, logger);
-      }, executorService);
-
-      CompletableFuture<String> deleteDbFuture = CompletableFuture.supplyAsync(() -> {
-        logger.log("Activity 2: Invoking LambdaDeleteFromDB");
-        return callLambda(DELETE_FROM_DB_FUNC, workerPayload, logger);
-      }, executorService);
-
-      CompletableFuture<String> deleteResizedFuture = CompletableFuture.supplyAsync(() -> {
-        logger.log("Activity 3: Invoking LambdaDeleteResized");
-        return callLambda(DELETE_RESIZED_FUNC, workerPayload, logger);
-      }, executorService);
-
-      // Wait for all workers to complete
-      CompletableFuture.allOf(deleteS3Future, deleteDbFuture, deleteResizedFuture).join();
-
       JSONObject results = new JSONObject();
-      results.put("Activity_1_Original_S3", deleteS3Future.get());
-      results.put("Activity_2_Database", deleteDbFuture.get());
-      results.put("Activity_3_Resized_S3", deleteResizedFuture.get());
+
+      // STEP 1: Delete from S3 and DB (LambdaDeleteObjects handles both)
+      logger.log("Step 1: Deleting from S3 and DB...");
+      String deleteObjectsResult = callLambda(DELETE_OBJECTS_FUNC, workerPayload, logger);
+      results.put("Activity_1_Original_S3_and_DB", deleteObjectsResult);
+      
+      // Check if delete failed
+      if (deleteObjectsResult.contains("Error") || deleteObjectsResult.contains("Failed") || deleteObjectsResult.contains("error")) {
+        logger.log("Delete from S3/DB failed, aborting workflow");
+        results.put("Activity_2_Resized_S3", "Skipped (S3/DB delete failed)");
+        return createResultsResponse(500, results, corsHeaders);
+      }
+
+      // STEP 2: Delete resized image (non-critical, continue even if fails)
+      logger.log("Step 2: Deleting resized image...");
+      String deleteResizedResult = callLambda(DELETE_RESIZED_FUNC, workerPayload, logger);
+      results.put("Activity_2_Resized_S3", deleteResizedResult);
+      
+      // Resized delete failure is non-critical, don't mark as error
+      if (deleteResizedResult.contains("Error") || deleteResizedResult.contains("Failed")) {
+        logger.log("Resized delete failed (non-critical): " + deleteResizedResult);
+      }
 
       logger.log("All delete activities completed");
 
-      Map<String, String> headers = new HashMap<>();
-      headers.put("Content-Type", "application/json");
-      headers.putAll(corsHeaders);
-
-      return new APIGatewayProxyResponseEvent()
-          .withStatusCode(200)
-          .withHeaders(headers)
-          .withBody(results.toString(4))
-          .withIsBase64Encoded(false);
+      // Return Combined Report
+      return createResultsResponse(200, results, corsHeaders);
 
     } catch (Exception e) {
       logger.log("ERROR in delete orchestrator: " + e.getMessage());
@@ -206,19 +208,30 @@ public class LambdaOrchestrateDeleteHandler
     }
   }
 
-  // Helper to call worker Lambda
+  // Helper to call worker Lambda (same as upload orchestrator)
   private String callLambda(String functionName, String payload, LambdaLogger logger) {
     try {
       InvokeRequest invokeRequest = InvokeRequest.builder()
           .functionName(functionName)
           .payload(SdkBytes.fromUtf8String(payload))
-          .invocationType("RequestResponse")
+          .invocationType("RequestResponse") // Synchronous
           .build();
 
       InvokeResponse invokeResult = lambdaClient.invoke(invokeRequest);
+      
+      // Check if Lambda execution failed
+      if (invokeResult.functionError() != null && !invokeResult.functionError().isEmpty()) {
+        logger.log("Lambda function error: " + invokeResult.functionError());
+        ByteBuffer errorPayload = invokeResult.payload().asByteBuffer();
+        String errorResponse = StandardCharsets.UTF_8.decode(errorPayload).toString();
+        logger.log("Error response: " + errorResponse);
+        return "Failed: Lambda execution failed: " + invokeResult.functionError();
+      }
+      
       ByteBuffer responsePayload = invokeResult.payload().asByteBuffer();
       String jsonResponse = StandardCharsets.UTF_8.decode(responsePayload).toString();
 
+      // Parse the worker's JSON response to get the clean message body
       try {
         JSONObject responseObject = new JSONObject(jsonResponse);
         if (responseObject.has("body")) {
@@ -230,14 +243,15 @@ public class LambdaOrchestrateDeleteHandler
       return jsonResponse;
     } catch (Exception e) {
       logger.log("Error invoking " + functionName + ": " + e.getMessage());
-      return "{\"error\":\"Failed to invoke " + functionName + ": " + e.getMessage() + "\"}";
+      e.printStackTrace();
+      return "Failed: " + e.getMessage();
     }
   }
 
   // SECURITY: Verify token using HMAC-SHA256
   private boolean verifyTokenWithHash(String email, String token, LambdaLogger logger) {
     if (email == null || email.isEmpty() || token == null || token.isEmpty()) {
-      logger.log("Missing email or token");
+      logger.log("Missing email or token - email: " + (email != null ? email : "null") + ", token: " + (token != null ? "present" : "null"));
       return false;
     }
 
@@ -255,11 +269,12 @@ public class LambdaOrchestrateDeleteHandler
       }
 
       boolean isValid = generatedToken.equals(token);
-      logger.log("Token verification for " + email + ": " + isValid);
+      logger.log("Token verification for " + email + ": isValid=" + isValid + ", generated=" + generatedToken.substring(0, Math.min(10, generatedToken.length())) + "... , received=" + token.substring(0, Math.min(10, token.length())) + "...");
       return isValid;
 
     } catch (Exception e) {
       logger.log("Error verifying token: " + e.getMessage());
+      e.printStackTrace();
       return false;
     }
   }
@@ -279,33 +294,29 @@ public class LambdaOrchestrateDeleteHandler
   }
 
   // SECURITY: Verify photo ownership
-  private boolean verifyPhotoOwnership(String key, String email, LambdaLogger logger) {
-    try {
-      String jdbcUrl = "jdbc:mysql://" + RDS_HOSTNAME + ":" + RDS_PORT + "/" + DB_NAME;
-      Properties props = new Properties();
-      props.setProperty("useSSL", "true");
-      props.setProperty("user", DB_USER);
-      props.setProperty("password", DB_PASSWORD);
+  private boolean verifyPhotoOwnership(String key, String email, LambdaLogger logger) throws Exception {
+    String jdbcUrl = "jdbc:mysql://" + RDS_HOSTNAME + ":" + RDS_PORT + "/" + DB_NAME;
+    Properties props = new Properties();
+    props.setProperty("useSSL", "true");
+    props.setProperty("user", DB_USER);
+    props.setProperty("password", DB_PASSWORD);
 
-      Class.forName("com.mysql.cj.jdbc.Driver");
-      try (Connection conn = DriverManager.getConnection(jdbcUrl, props)) {
-        String sql = "SELECT COUNT(*) as count FROM Photos WHERE S3Key = ? AND Email = ?";
-        try (PreparedStatement st = conn.prepareStatement(sql)) {
-          st.setString(1, key);
-          st.setString(2, email);
-          try (java.sql.ResultSet rs = st.executeQuery()) {
-            if (rs.next() && rs.getInt("count") > 0) {
-              return true;
-            } else {
-              logger.log("Photo " + key + " does not belong to " + email);
-              return false;
-            }
+    Class.forName("com.mysql.cj.jdbc.Driver");
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, props)) {
+      String sql = "SELECT COUNT(*) as count FROM Photos WHERE S3Key = ? AND Email = ?";
+      try (PreparedStatement st = conn.prepareStatement(sql)) {
+        st.setString(1, key);
+        st.setString(2, email);
+        try (java.sql.ResultSet rs = st.executeQuery()) {
+          if (rs.next() && rs.getInt("count") > 0) {
+            logger.log("Ownership verified: " + key + " belongs to " + email);
+            return true;
+          } else {
+            logger.log("Photo " + key + " does not belong to " + email);
+            return false;
           }
         }
       }
-    } catch (Exception e) {
-      logger.log("Error verifying ownership: " + e.getMessage());
-      return false;
     }
   }
 
@@ -330,6 +341,19 @@ public class LambdaOrchestrateDeleteHandler
       }
       return null;
     }
+  }
+
+  // Helper to create results response (same as upload orchestrator)
+  private APIGatewayProxyResponseEvent createResultsResponse(int statusCode, JSONObject results, Map<String, String> corsHeaders) {
+    Map<String, String> headers = new HashMap<>();
+    headers.put("Content-Type", "application/json");
+    headers.putAll(corsHeaders);
+
+    return new APIGatewayProxyResponseEvent()
+        .withStatusCode(statusCode)
+        .withHeaders(headers)
+        .withBody(results.toString(4)) // Pretty print JSON
+        .withIsBase64Encoded(false);
   }
 
   private APIGatewayProxyResponseEvent createErrorResponse(

@@ -12,8 +12,8 @@ resource "aws_lambda_function" "orchestrate_delete_handler" {
   environment {
     variables = {
       # Worker Lambda function names
-      DELETE_FROM_S3_FUNC = aws_lambda_function.delete_objects.function_name
-      DELETE_FROM_DB_FUNC = aws_lambda_function.delete_objects.function_name
+      # LambdaDeleteObjects handles both S3 and DB deletion
+      DELETE_OBJECTS_FUNC = aws_lambda_function.delete_objects.function_name
       DELETE_RESIZED_FUNC = aws_lambda_function.delete_resized_object.function_name
       # RDS config for ownership verification
       RDS_HOSTNAME = module.database.rds_instance_address

@@ -74,7 +74,8 @@ resource "aws_iam_role_policy" "lambda_invoke_policy" {
           aws_lambda_function.orchestrate_delete_handler.arn,
           aws_lambda_function.resize_wrapper.arn,
           aws_lambda_function.token_checker.arn,
-          aws_lambda_function.generate_token.arn
+          aws_lambda_function.generate_token.arn,
+          aws_lambda_function.delete_resized_object.arn
         ]
       }
     ]
