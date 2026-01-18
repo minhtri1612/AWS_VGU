@@ -2,7 +2,6 @@ package vgu.cloud26;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 
 import org.json.JSONObject;
 
@@ -36,45 +35,6 @@ public class LambdaEntryPoint implements
     private static final String GET_RESIZED_FUNC_NAME = System.getenv().getOrDefault("GET_RESIZED_FUNC_NAME", "LambdaGetResizedImage");
     private static final String GET_PHOTOS_DB_FUNC_NAME = System.getenv().getOrDefault("GET_PHOTOS_DB_FUNC_NAME", "LambdaGetPhotosDB");
     private static final String ADD_PHOTO_DB_FUNC_NAME = System.getenv().getOrDefault("ADD_PHOTO_DB_FUNC_NAME", "LambdaAddPhotoDB");
-
-    public LambdaEntryPoint() {
-    }   
-    
-    public String callLambda(String functionName, String payload, LambdaLogger logger) {
-        String message;
-        InvokeRequest invokeRequest = InvokeRequest.builder()
-                .functionName(functionName)
-                .payload(SdkBytes.fromUtf8String(payload))
-                .invocationType("RequestResponse") 
-                .build();
-
-        try {
-            InvokeResponse invokeResult = lambdaClient.invoke(invokeRequest);
-            ByteBuffer responsePayload = invokeResult.payload().asByteBuffer();
-            String responseString = StandardCharsets.UTF_8.decode(responsePayload).toString();
-
-            try {
-                JSONObject responseObject = new JSONObject(responseString);
-                
-                if (responseObject.has("body")) {
-                    message = responseObject.getString("body");
-                } else {
-                    message = responseString;
-                }
-            } catch (Exception jsonException) {
-                // If it's not valid JSON, return the raw response
-                message = responseString;
-            }
-            
-            logger.log("Response from " + functionName + ": " + message);
-            return message;
-
-        } catch (AwsServiceException | SdkClientException e) {
-            message = "Error calling " + functionName + ": " + e.getMessage();
-            logger.log(message);
-        }
-        return message;
-    }
     
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent event, Context cntxt) {

@@ -121,15 +121,26 @@
         const DELETE_ORCHESTRATOR_URL = API_GATEWAY_BASE + "/delete-orchestrator";
         const LIST_URL = API_GATEWAY_BASE + "?format=photos";
 
-        // Global state for authentication
+        // ========================================
+        // SECURITY: DON'T TRUST THE CLIENT
+        // ========================================
+        // Frontend checks are ONLY for UX - they can be bypassed via DevTools
+        // REAL security: Backend MUST verify token in EVERY request!
+        // ========================================
+        
+        // Global state for authentication - Using localStorage for persistence
+        // NOTE: localStorage can still be manipulated by attackers (DevTools)
+        // Backend MUST verify token regardless of what frontend sends!
         let currentEmail = "";
         let currentToken = "";
         let isAuthenticated = false;
 
-        // Initialize - page starts empty (security measure)
+        // Initialize - Restore session from localStorage if exists
         window.addEventListener('DOMContentLoaded', function () {
             // Don't fetch anything until user logs in
             document.getElementById("objectsTable").innerHTML = "";
+            // SECURITY: Verify session on page load - DON'T TRUST stored values
+            checkSession();
         });
 
         // Login handler
@@ -143,17 +154,24 @@
                 return;
             }
 
-            // If token is provided, verify it
+            // SECURITY: Always verify token with backend - DON'T TRUST client
+            // If token is provided, verify it with backend
             if (token) {
                 const verified = await verifyToken(email, token);
                 if (verified) {
+                    // SECURITY: Store in localStorage for persistence, BUT backend still verifies
                     currentEmail = email;
                     currentToken = token;
                     isAuthenticated = true;
+                    // Save to localStorage (can be manipulated, but backend verifies anyway)
+                    localStorage.setItem("cloud26_email", email);
+                    localStorage.setItem("cloud26_token", token);
                     loginStatus.innerHTML = '<span class="success">Login successful!</span>';
                     document.getElementById("list_button").disabled = false;
                     document.getElementById("upload_section").style.display = "block";
                 } else {
+                    // SECURITY: Backend rejected token - clear everything
+                    clearSession();
                     loginStatus.innerHTML = '<span class="error">Invalid token. Please check your email and try again.</span>';
                     isAuthenticated = false;
                     document.getElementById("list_button").disabled = true;
@@ -198,7 +216,11 @@
             }
         }
 
-        // Verify token
+        // ========================================
+        // SECURITY: Verify token with backend
+        // ========================================
+        // DON'T TRUST THE CLIENT - Always verify token with backend
+        // Frontend check is ONLY for UX - Real security is in backend verification
         async function verifyToken(email, token) {
             try {
                 const response = await fetch(AUTH_URL, {
@@ -213,6 +235,7 @@
                 });
 
                 const data = await response.json();
+                // SECURITY: Backend returns {valid: true/false} after verifying token hash
                 return response.ok && data.valid === true;
             } catch (error) {
                 console.error("Error verifying token:", error);
@@ -220,8 +243,50 @@
             }
         }
 
-        // Upload function (requires authentication)
+        // ========================================
+        // Check session on page load - DON'T TRUST stored values
+        // ========================================
+        async function checkSession() {
+            const savedEmail = localStorage.getItem("cloud26_email");
+            const savedToken = localStorage.getItem("cloud26_token");
+            
+            if (!savedEmail || !savedToken) {
+                // No saved session
+                return;
+            }
+            
+            // SECURITY: Verify with backend - DON'T TRUST localStorage
+            const verified = await verifyToken(savedEmail, savedToken);
+            if (verified) {
+                currentEmail = savedEmail;
+                currentToken = savedToken;
+                isAuthenticated = true;
+                document.getElementById("list_button").disabled = false;
+                document.getElementById("upload_section").style.display = "block";
+            } else {
+                // SECURITY: Backend rejected token - clear session
+                clearSession();
+            }
+        }
+
+        // ========================================
+        // Clear session - remove from memory and localStorage
+        // ========================================
+        function clearSession() {
+            currentEmail = "";
+            currentToken = "";
+            isAuthenticated = false;
+            localStorage.removeItem("cloud26_email");
+            localStorage.removeItem("cloud26_token");
+        }
+
+        // ========================================
+        // Upload function
+        // ========================================
+        // SECURITY NOTE: Frontend check is ONLY for UX (can be bypassed)
+        // REAL security: Backend (LambdaOrchestrateUploadHandler) MUST verify token!
         function uploadObject() {
+            // Frontend check for UX only - attacker can bypass via DevTools
             if (!isAuthenticated || !currentEmail || !currentToken) {
                 alert("Please login first!");
                 return;
@@ -253,12 +318,14 @@
             reader.onload = () => {
                 const uint8Array = new Uint8Array(reader.result);
 
+                // SECURITY: Send token and email to backend for verification
+                // Backend MUST verify token hash (DON'T TRUST THE CLIENT)
                 const body = {
                     "content": uint8Array.toBase64(),
                     "key": file.name,
                     "description": description,
                     "token": currentToken,
-                    "email": currentEmail // SECURITY: Send both email and token for hash verification
+                    "email": currentEmail // Backend uses this to verify token hash
                 };
 
                 sendToOrchestrator(body);
@@ -314,18 +381,23 @@
                 });
         }
 
-        // Fetch list of objects (requires authentication)
+        // ========================================
+        // Fetch list of objects
+        // ========================================
+        // SECURITY: Backend (LambdaGetPhotosDB) MUST verify token!
         function fetchListOfObjects() {
+            // Frontend check for UX only - attacker can bypass
             if (!isAuthenticated || !currentEmail || !currentToken) {
                 alert("Please login first!");
                 return;
             }
 
+            // SECURITY: Always send token and email - Backend MUST verify!
             fetch(LIST_URL, {
                 method: 'POST',
                 body: JSON.stringify({
                     token: currentToken,
-                    email: currentEmail // SECURITY: Send both email and token for hash verification
+                    email: currentEmail // Backend verifies token hash using this email
                 }),
                 headers: { 'Content-Type': 'application/json' },
                 mode: 'cors'
@@ -443,12 +515,13 @@
             imgElement.alt = "Loading...";
             imgElement.style.display = "inline-block";
 
+            // SECURITY: Always send token and email for thumbnail requests
             fetch(API_GATEWAY_BASE + "?format=resized", {
                 method: 'POST',
                 body: JSON.stringify({
                     "key": key,
                     "token": currentToken,
-                    "email": currentEmail
+                    "email": currentEmail // Backend verifies token
                 }),
                 headers: { 'Content-Type': 'application/json' },
                 mode: 'cors'
@@ -470,12 +543,18 @@
                 });
         }
 
+        // ========================================
+        // Download function
+        // ========================================
+        // SECURITY: Backend (LambdaGetObject) MUST verify token!
         function fetchObject(key) {
+            // Frontend check for UX only
             if (!isAuthenticated || !currentToken || !currentEmail) {
                 alert("Please login first!");
                 return;
             }
 
+            // SECURITY: Always send token and email - Backend MUST verify!
             const body = { "key": key, "token": currentToken, "email": currentEmail };
             fetch(API_GATEWAY_BASE, {
                 method: 'PUT',
@@ -497,7 +576,12 @@
                 });
         }
 
+        // ========================================
+        // Delete function
+        // ========================================
+        // SECURITY: Backend (LambdaOrchestrateDeleteHandler) MUST verify token AND ownership!
         function deleteObject(key) {
+            // Frontend check for UX only
             if (!isAuthenticated || !currentToken || !currentEmail) {
                 alert("Please login first!");
                 return;
