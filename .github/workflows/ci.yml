@@ -3,6 +3,14 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Terraform action
+        type: choice
+        options:
+          - destroy
+        default: destroy
 
 jobs:
   check:
@@ -110,3 +118,64 @@ jobs:
             --branch-name main \
             --job-type RELEASE \
             --region ap-southeast-2
+
+  destroy:
+    name: Terraform destroy
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install and zip each Lambda
+        run: |
+          set -euo pipefail
+          for dir in Lambda*; do
+            npm ci --omit=dev --prefix "$dir"
+            (
+              cd "$dir"
+              rm -f lambda.zip
+              zip -qr lambda.zip index.js node_modules package.json package-lock.json
+            )
+          done
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Terraform init
+        working-directory: terraform
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-southeast-2
+        run: terraform init
+
+      - name: Empty image buckets
+        working-directory: terraform
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-southeast-2
+          AWS_DEFAULT_REGION: ap-southeast-2
+        run: |
+          set -euo pipefail
+          for name in source_bucket_name resized_bucket_name; do
+            bucket=$(terraform output -raw "$name")
+            aws s3 rm "s3://${bucket}" --recursive
+          done
+
+      - name: Terraform destroy
+        working-directory: terraform
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-southeast-2
+          TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+          TF_VAR_from_email: ${{ secrets.TF_VAR_FROM_EMAIL }}
+          TF_VAR_secret_key: ${{ secrets.TF_VAR_SECRET_KEY }}
+          TF_VAR_github_token: ${{ secrets.TF_VAR_GITHUB_TOKEN }}
+        run: terraform destroy -auto-approve

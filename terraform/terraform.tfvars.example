@@ -20,6 +20,9 @@ secret_key = "your-secret-key-for-hmac-tokens-change-this"
 # REQUIRED: Verified SES sender in the same region (ap-southeast-2)
 from_email = "you@example.com"
 
+# REQUIRED: GitHub token so Amplify can pull this repository
+github_token = "ghp_your_token"
+
 # Optional: Override defaults if needed
 # aws_region = "ap-southeast-2"
 # environment = "dev"
