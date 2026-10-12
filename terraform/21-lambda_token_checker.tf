@@ -7,7 +7,13 @@ resource "aws_lambda_function" "token_checker" {
   source_code_hash = filebase64sha256("${path.module}/../LambdaTokenChecker/lambda.zip")
   runtime          = var.lambda_runtime
   timeout          = var.lambda_timeout
-  memory_size      = var.lambda_memory
+  memory_size = var.lambda_memory
+
+  environment {
+    variables = {
+      SECRET_KEY = var.secret_key
+    }
+  }
 }
 
 # Lambda Permission for API Gateway to invoke Token Checker

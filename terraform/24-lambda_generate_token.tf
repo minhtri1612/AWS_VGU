@@ -12,6 +12,7 @@ resource "aws_lambda_function" "generate_token" {
   environment {
     variables = {
       FROM_EMAIL              = var.from_email
+      SECRET_KEY              = var.secret_key
       TOKEN_CHECKER_FUNC_NAME = aws_lambda_function.token_checker.function_name
     }
   }

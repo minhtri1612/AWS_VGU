@@ -98,6 +98,18 @@ resource "aws_iam_role_policy" "lambda_ssm_policy" {
         Resource = [
           "arn:aws:ssm:ap-southeast-2:864992048128:parameter/keytokenhash"
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "ssm.${var.aws_region}.amazonaws.com"
+          }
+        }
       }
     ]
   })
