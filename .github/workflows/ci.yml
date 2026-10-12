@@ -165,7 +165,8 @@ jobs:
           set -euo pipefail
           for name in source_bucket_name resized_bucket_name; do
             bucket=$(terraform output -raw "$name")
-            aws s3 rm "s3://${bucket}" --recursive
+            aws s3 rm "s3://${bucket}" --recursive || true
+            python3 ../scripts/purge-s3-versions.py "$bucket"
           done
 
       - name: Terraform destroy
