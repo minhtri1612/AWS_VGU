@@ -163,10 +163,10 @@ jobs:
           AWS_DEFAULT_REGION: ap-southeast-2
         run: |
           set -euo pipefail
-          for name in source_bucket_name resized_bucket_name; do
-            bucket=$(terraform output -raw "$name")
+          for bucket in minhtri-devops-cloud-photos-864992048128 minhtri-devops-cloud-thumbs-864992048128; do
             aws s3 rm "s3://${bucket}" --recursive || true
-            python3 ../scripts/purge-s3-versions.py "$bucket"
+            python3 ../scripts/purge-s3-versions.py "$bucket" || true
+            aws s3api delete-bucket --bucket "$bucket" || true
           done
 
       - name: Terraform destroy
