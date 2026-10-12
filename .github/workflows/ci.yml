@@ -90,7 +90,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ap-southeast-2
-          TF_VAR_db_password: ${{ secrets.TF_VAR_db_password }}
-          TF_VAR_from_email: ${{ secrets.TF_VAR_from_email }}
-          TF_VAR_secret_key: ${{ secrets.TF_VAR_secret_key }}
+          TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+          TF_VAR_from_email: ${{ secrets.TF_VAR_FROM_EMAIL }}
+          TF_VAR_secret_key: ${{ secrets.TF_VAR_SECRET_KEY }}
         run: terraform apply -auto-approve
