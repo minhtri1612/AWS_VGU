@@ -178,13 +178,12 @@
                     document.getElementById("upload_section").style.display = "none";
                 }
             } else {
-                // Request token (no SES needed - token returned directly)
-                loginStatus.innerHTML = 'Generating token...';
+                loginStatus.innerHTML = 'Sending token...';
                 const success = await requestToken(email);
                 if (success) {
-                    loginStatus.innerHTML = '<span class="success">Token generated! Token has been auto-filled. Click Login again to verify.</span>';
+                    loginStatus.innerHTML = '<span class="success">Token sent. Check your email, paste it above, then click Login.</span>';
                 } else {
-                    loginStatus.innerHTML = '<span class="error">Failed to generate token. Please try again.</span>';
+                    loginStatus.innerHTML = '<span class="error">Failed to send token. Please try again.</span>';
                 }
             }
         }
@@ -203,13 +202,7 @@
                 });
 
                 const data = await response.json();
-                // Token is returned directly in response (no SES needed)
-                if (response.ok && data.token) {
-                    // Auto-fill token field
-                    document.getElementById("token_input").value = data.token;
-                    return true;
-                }
-                return response.ok && data.message && (data.message.includes("generated") || data.message.includes("success"));
+                return response.ok && data.message && data.message.includes("success");
             } catch (error) {
                 console.error("Error requesting token:", error);
                 return false;

@@ -1,0 +1,9 @@
+{
+  "name": "lambda-entry-point",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-lambda": "^3.716.0"
+  }
+}

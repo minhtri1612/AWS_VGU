@@ -43,14 +43,18 @@ variable "lambda_memory" {
 variable "lambda_runtime" {
   description = "Lambda runtime"
   type        = string
-  # IMPORTANT: Make sure this matches your actual Java version (java11 or java17)
-  default = "java17"
+  default     = "nodejs20.x"
 }
 
 variable "db_password" {
   description = "Database master password"
   type        = string
   sensitive   = true
+}
+
+variable "from_email" {
+  description = "Verified SES sender address used to email login tokens"
+  type        = string
 }
 
 variable "secret_key" {
@@ -60,13 +64,3 @@ variable "secret_key" {
   default     = "CHANGE_ME_SECRET_KEY_FOR_HMAC"
 }
 
-variable "github_token" {
-  description = "GitHub personal access token for Amplify"
-  type        = string
-  sensitive   = true
-}
-
-variable "github_repo" {
-  description = "GitHub repository URL"
-  type        = string
-}

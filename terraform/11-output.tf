@@ -35,16 +35,6 @@ output "lambda_delete_objects_arn" {
   value       = aws_lambda_function.delete_objects.arn
 }
 
-output "lambda_resize_arn" {
-  description = "Lambda Resize ARN"
-  value       = aws_lambda_function.resize.arn
-}
-
-output "lambda_get_list_of_objects_arn" {
-  description = "Lambda GetListOfObjects ARN"
-  value       = aws_lambda_function.get_list_of_objects.arn
-}
-
 output "lambda_delete_resized_object_arn" {
   description = "Lambda DeleteResizedObject ARN"
   value       = aws_lambda_function.delete_resized_object.arn
@@ -102,11 +92,6 @@ output "get_objects_function_url" {
 output "delete_objects_function_url" {
   description = "Lambda Function URL for DeleteObjects"
   value       = aws_lambda_function_url.delete_objects.function_url
-}
-
-output "get_list_of_objects_function_url" {
-  description = "Lambda Function URL for GetListOfObjects"
-  value       = aws_lambda_function_url.get_list_of_objects.function_url
 }
 
 output "get_resized_image_function_url" {

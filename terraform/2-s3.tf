@@ -75,32 +75,6 @@ resource "aws_s3_bucket_versioning" "resized_bucket_versioning" {
   }
 }
 
-# S3 bucket notification to trigger Lambda resize function AND delete cleanup
-resource "aws_s3_bucket_notification" "source_bucket_notification" {
-  bucket = aws_s3_bucket.source_bucket.id
-
-  # Trigger resize on object creation
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.resize.arn
-    events              = ["s3:ObjectCreated:*"]
-    filter_prefix       = ""
-    filter_suffix       = ""
-  }
-
-  # Trigger cleanup on object deletion
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.delete_resized_object.arn
-    events              = ["s3:ObjectRemoved:*"]
-    filter_prefix       = ""
-    filter_suffix       = ""
-  }
-
-  depends_on = [
-    aws_lambda_permission.allow_s3_invoke_resize,
-    aws_lambda_permission.allow_s3_invoke_delete_resized
-  ]
-}
-
 # Upload index.html to source bucket
 resource "aws_s3_object" "index_html" {
   bucket       = aws_s3_bucket.source_bucket.id

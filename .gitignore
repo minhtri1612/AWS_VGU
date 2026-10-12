@@ -2,6 +2,8 @@
 .terraform/
 *.tfstate
 *.tfstate.*
+tfplan
+*.tfplan
 .terraform.lock.hcl
 terraform.tfvars
 *.tfvars.backup
@@ -10,6 +12,9 @@ terraform.tfvars
 target/
 *.jar
 !terraform/**/*.jar
+
+# Node
+node_modules/
 
 # IDE
 .idea/

@@ -17,7 +17,8 @@ db_password = "YourSecurePassword123"
 # REQUIRED: Secret key for HMAC token generation
 secret_key = "your-secret-key-for-hmac-tokens-change-this"
 
-# Note: Email configuration removed - tokens are returned directly (no email sending)
+# REQUIRED: Verified SES sender in the same region (ap-southeast-2)
+from_email = "you@example.com"
 
 # Optional: Override defaults if needed
 # aws_region = "ap-southeast-2"

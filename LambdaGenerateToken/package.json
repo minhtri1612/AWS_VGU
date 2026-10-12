@@ -1,0 +1,11 @@
+{
+  "name": "lambda-generate-token",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-lambda": "^3.716.0",
+    "@aws-sdk/client-ses": "^3.716.0",
+    "@aws-sdk/client-ssm": "^3.716.0"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "lambda-delete-objects",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.716.0",
+    "mysql2": "^3.12.0"
+  }
+}

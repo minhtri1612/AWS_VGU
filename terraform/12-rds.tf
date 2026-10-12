@@ -1,6 +1,6 @@
 module "database" {
   source       = "./module/rds"
-  project_name = "project1"
+  project_name = var.project_name
 
   security_group_ids = [
     aws_security_group.compliant.id
