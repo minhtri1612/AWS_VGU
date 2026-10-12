@@ -75,11 +75,11 @@ resource "aws_s3_bucket_versioning" "resized_bucket_versioning" {
   }
 }
 
-# Upload index.html to source bucket
+# Upload index.html with the API URL from this apply, not the placeholder in git.
 resource "aws_s3_object" "index_html" {
   bucket       = aws_s3_bucket.source_bucket.id
   key          = "index.html"
-  source       = "${path.module}/../index.html"
+  content      = replace(file("${path.module}/../index.html"), "__API_GATEWAY_BASE__", "https://${aws_api_gateway_rest_api.main.id}.execute-api.${var.aws_region}.amazonaws.com/${var.environment}")
   content_type = "text/html"
-  etag         = filemd5("${path.module}/../index.html")
+  etag         = md5(replace(file("${path.module}/../index.html"), "__API_GATEWAY_BASE__", "https://${aws_api_gateway_rest_api.main.id}.execute-api.${var.aws_region}.amazonaws.com/${var.environment}"))
 }

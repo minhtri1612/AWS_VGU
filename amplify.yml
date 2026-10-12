@@ -1,0 +1,10 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - sed -i "s|__API_GATEWAY_BASE__|${API_GATEWAY_BASE}|g" index.html
+  artifacts:
+    baseDirectory: .
+    files:
+      - index.html
