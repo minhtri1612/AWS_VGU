@@ -1,40 +1,40 @@
 variable "project_name" {
-  type = string
+  type    = string
   default = "project4_rds"
-  
+
 }
 
 variable "instance_class" {
-    type = string
-    default = "db.t3.micro"
+  type    = string
+  default = "db.t3.micro"
 
-    validation {
-      condition = contains(["db.t3.micro"], var.instance_class)
-        error_message = "Only db.t3.micro is allowed for instance_class."
-    }       
-  
+  validation {
+    condition     = contains(["db.t3.micro"], var.instance_class)
+    error_message = "Only db.t3.micro is allowed for instance_class."
+  }
+
 }
 
 variable "storage_size" {
-    type = number
-    default = 20
+  type    = number
+  default = 20
 
-    validation {
-      condition = var.storage_size >= 20 && var.storage_size <= 1000
-      error_message = "Storage size must be between 20 and 1000 GB."
-    }
-  
+  validation {
+    condition     = var.storage_size >= 20 && var.storage_size <= 1000
+    error_message = "Storage size must be between 20 and 1000 GB."
+  }
+
 }
 
 variable "engine" {
-    type = string
-    default = "mysql"
+  type    = string
+  default = "mysql"
 
-    validation {
-      condition = contains(["mysql", "postgres"], var.engine)
-      error_message = "Only 'mysql' and 'postgres' are allowed for engine."
-    }
-  
+  validation {
+    condition     = contains(["mysql", "postgres"], var.engine)
+    error_message = "Only 'mysql' and 'postgres' are allowed for engine."
+  }
+
 }
 
 variable "credentials" {
@@ -65,16 +65,16 @@ variable "credentials" {
 
 variable "subnet_ids" {
   type = list(string)
-  
+
 }
 
 
 variable "security_group_ids" {
   type = list(string)
-  
+
 }
 
 variable "subnet_map" {
-  type = map(string)
+  type        = map(string)
   description = "Map of subnet names to subnet IDs."
 }

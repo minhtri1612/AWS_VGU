@@ -11,10 +11,10 @@ resource "aws_lambda_function" "add_photo_db" {
 
   environment {
     variables = {
-      RDS_HOSTNAME = module.database.rds_instance_address
-      RDS_PORT     = tostring(module.database.rds_instance_port)
-      DB_USER      = "admin"
-      DB_PASSWORD  = var.db_password
+      RDS_HOSTNAME            = module.database.rds_instance_address
+      RDS_PORT                = tostring(module.database.rds_instance_port)
+      DB_USER                 = "admin"
+      DB_PASSWORD             = var.db_password
       DB_NAME                 = "Cloud26"
       TOKEN_CHECKER_FUNC_NAME = aws_lambda_function.token_checker.function_name
     }

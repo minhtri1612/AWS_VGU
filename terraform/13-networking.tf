@@ -151,7 +151,7 @@ resource "aws_vpc_security_group_ingress_rule" "mysql" {
 # All traffic from your IP (for full access)
 resource "aws_vpc_security_group_ingress_rule" "all_traffic_my_ip" {
   security_group_id = aws_security_group.compliant.id
-  cidr_ipv4         = "104.28.205.72/32"  # Your current IP - update if it changes
+  cidr_ipv4         = "104.28.205.72/32" # Your current IP - update if it changes
   from_port         = -1
   to_port           = -1
   ip_protocol       = "-1"

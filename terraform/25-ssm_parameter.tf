@@ -12,7 +12,7 @@ resource "aws_ssm_parameter" "secret_key" {
   description = "Secret key for HMAC-SHA256 token generation"
   type        = "SecureString"
   value       = var.secret_key
-  overwrite   = true  # Allow overwriting existing parameter
+  overwrite   = true # Allow overwriting existing parameter
 
   tags = {
     Name        = "${var.project_name}-secret-key"

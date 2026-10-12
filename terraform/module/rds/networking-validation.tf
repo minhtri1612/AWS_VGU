@@ -48,7 +48,7 @@ data "aws_security_group" "input" {
 
   lifecycle {
     postcondition {
-      condition = can(self.tags.Access) && lower(self.tags.Access) == "private"
+      condition     = can(self.tags.Access) && lower(self.tags.Access) == "private"
       error_message = <<-EOT
       The following security group is not marked as private:
 

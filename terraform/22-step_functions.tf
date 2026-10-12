@@ -53,79 +53,79 @@ resource "aws_sfn_state_machine" "upload_workflow" {
     StartAt = "Activity1_Database"
     States = {
       Activity1_Database = {
-        Type = "Task"
+        Type     = "Task"
         Resource = "arn:aws:states:::lambda:invoke"
         Parameters = {
           FunctionName = aws_lambda_function.add_photo_db.function_name
           Payload = {
-            "httpMethod": "POST"
-            "body.$": "$.body"
-            "headers": {
-              "Content-Type": "application/json"
+            "httpMethod" : "POST"
+            "body.$" : "$.body"
+            "headers" : {
+              "Content-Type" : "application/json"
             }
           }
         }
         ResultPath = "$.activity1_result"
-        Next = "CheckDatabase"
+        Next       = "CheckDatabase"
       }
       CheckDatabase = {
         Type = "Choice"
         Choices = [
           {
-            Variable = "$.activity1_result.Payload.statusCode"
+            Variable      = "$.activity1_result.Payload.statusCode"
             NumericEquals = 200
-            Next = "Activity2_OriginalS3"
+            Next          = "Activity2_OriginalS3"
           }
         ]
         Default = "DatabaseFailed"
       }
       DatabaseFailed = {
-        Type = "Fail"
+        Type  = "Fail"
         Error = "DatabaseInsertFailed"
         Cause = "Activity 1 (Database) did not return 200"
       }
       Activity2_OriginalS3 = {
-        Type = "Task"
+        Type     = "Task"
         Resource = "arn:aws:states:::lambda:invoke"
         Parameters = {
           FunctionName = aws_lambda_function.upload_objects.function_name
           Payload = {
-            "httpMethod": "POST"
-            "body.$": "$.body"
-            "headers": {
-              "Content-Type": "application/json"
+            "httpMethod" : "POST"
+            "body.$" : "$.body"
+            "headers" : {
+              "Content-Type" : "application/json"
             }
           }
         }
         ResultPath = "$.activity2_result"
-        Next = "CheckUpload"
+        Next       = "CheckUpload"
       }
       CheckUpload = {
         Type = "Choice"
         Choices = [
           {
-            Variable = "$.activity2_result.Payload.statusCode"
+            Variable      = "$.activity2_result.Payload.statusCode"
             NumericEquals = 200
-            Next = "Activity3_ResizeS3"
+            Next          = "Activity3_ResizeS3"
           }
         ]
         Default = "UploadFailed"
       }
       UploadFailed = {
-        Type = "Fail"
+        Type  = "Fail"
         Error = "OriginalUploadFailed"
         Cause = "Activity 2 (Original S3) did not return 200"
       }
       Activity3_ResizeS3 = {
-        Type = "Task"
+        Type     = "Task"
         Resource = "arn:aws:states:::lambda:invoke"
         Parameters = {
           FunctionName = aws_lambda_function.resize_wrapper.function_name
           Payload = {
-            "httpMethod": "POST"
-            "body.$": "$.body"
-            "headers": {
-              "Content-Type": "application/json"
+            "httpMethod" : "POST"
+            "body.$" : "$.body"
+            "headers" : {
+              "Content-Type" : "application/json"
             }
           }
         }
@@ -133,8 +133,8 @@ resource "aws_sfn_state_machine" "upload_workflow" {
         Catch = [
           {
             ErrorEquals = ["States.ALL"]
-            ResultPath = "$.activity3_error"
-            Next = "ResizeSkipped"
+            ResultPath  = "$.activity3_error"
+            Next        = "ResizeSkipped"
           }
         ]
         Next = "ExtractResults"
@@ -147,14 +147,14 @@ resource "aws_sfn_state_machine" "upload_workflow" {
           }
         }
         ResultPath = "$.activity3_result"
-        Next = "ExtractResults"
+        Next       = "ExtractResults"
       }
       ExtractResults = {
         Type = "Pass"
         Parameters = {
-          "Activity_1_Database.$": "$.activity1_result.Payload.body"
-          "Activity_2_Original_S3.$": "$.activity2_result.Payload.body"
-          "Activity_3_Resize_S3.$": "$.activity3_result.Payload.body"
+          "Activity_1_Database.$" : "$.activity1_result.Payload.body"
+          "Activity_2_Original_S3.$" : "$.activity2_result.Payload.body"
+          "Activity_3_Resize_S3.$" : "$.activity3_result.Payload.body"
         }
         End = true
       }
