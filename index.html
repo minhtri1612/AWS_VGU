@@ -343,7 +343,7 @@
                 mode: 'cors',
                 credentials: 'omit'
             })
-                .then((resp) => {
+                .then(async (resp) => {
                     if (resp.status === 413) {
                         throw new Error("413: Payload Too Large - File exceeds 6MB limit");
                     }
