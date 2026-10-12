@@ -348,7 +348,8 @@
                         throw new Error("413: Payload Too Large - File exceeds 6MB limit");
                     }
                     if (!resp.ok) {
-                        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+                        const detail = await resp.text();
+                        throw new Error(`HTTP ${resp.status}: ${detail || resp.statusText}`);
                     }
                     return resp.json().catch(() => {
                         return resp.text().then(text => {

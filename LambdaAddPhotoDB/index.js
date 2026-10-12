@@ -49,15 +49,62 @@ async function verifyTokenWithHash(email, token) {
 }
 
 function dbConfig(database) {
-  return {
+  const config = {
     host: RDS_HOSTNAME,
     port: Number(RDS_PORT),
     user: DB_USER,
     password: DB_PASSWORD,
-    database,
     ssl: { rejectUnauthorized: false },
     connectTimeout: 10000,
   };
+  if (database) {
+    config.database = database;
+  }
+  return config;
+}
+
+async function ensureSchema() {
+  const connection = await mysql.createConnection(dbConfig());
+  try {
+    await connection.query("CREATE DATABASE IF NOT EXISTS " + DB_NAME);
+    await connection.query("USE " + DB_NAME);
+    await connection.query(
+      "CREATE TABLE IF NOT EXISTS Photos (" +
+        "ID INT NOT NULL AUTO_INCREMENT PRIMARY KEY, " +
+        "Description VARCHAR(255), " +
+        "S3Key VARCHAR(512), " +
+        "Email VARCHAR(255))"
+    );
+  } finally {
+    await connection.end();
+  }
+}
+
+async function insertPhoto(description, originalFileName, email) {
+  const write = async () => {
+    const connection = await mysql.createConnection(dbConfig(DB_NAME));
+    try {
+      await connection.execute("INSERT INTO Photos (Description, S3Key, Email) VALUES (?, ?, ?)", [
+        description,
+        originalFileName,
+        email,
+      ]);
+      console.log("Inserted row: " + description + " | " + originalFileName + " | Email: " + email);
+    } finally {
+      await connection.end();
+    }
+  };
+
+  try {
+    await write();
+  } catch (err) {
+    if (err.code !== "ER_BAD_DB_ERROR" && err.code !== "ER_NO_SUCH_TABLE") {
+      throw err;
+    }
+    console.log("Schema missing, creating Cloud26.Photos");
+    await ensureSchema();
+    await write();
+  }
 }
 
 function parseBody(event) {
@@ -131,17 +178,7 @@ exports.handler = async (event) => {
 
     console.log("Processing DB insert for file: " + originalFileName + ", email from token: " + email);
 
-    const connection = await mysql.createConnection(dbConfig(DB_NAME));
-    try {
-      await connection.execute("INSERT INTO Photos (Description, S3Key, Email) VALUES (?, ?, ?)", [
-        description,
-        originalFileName,
-        email,
-      ]);
-      console.log("Inserted row: " + description + " | " + originalFileName + " | Email: " + email);
-    } finally {
-      await connection.end();
-    }
+    await insertPhoto(description, originalFileName, email);
 
     return createResponse(200, "Success: Photo added to database");
   } catch (err) {
