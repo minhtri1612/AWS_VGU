@@ -1,14 +1,3 @@
-# Buckets already exist from the previous deploy. State was empty on the first CI apply.
-import {
-  to = aws_s3_bucket.source_bucket
-  id = "minhtri-devops-cloud-getobjects-864992048128"
-}
-
-import {
-  to = aws_s3_bucket.resized_bucket
-  id = "minhtri-devops-cloud-resized-864992048128"
-}
-
 # Source bucket for uploads and downloads
 resource "aws_s3_bucket" "source_bucket" {
   bucket = var.source_bucket_name
